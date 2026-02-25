@@ -8,24 +8,16 @@
                 <i class="ph-bold ph-pulse text-primary"></i>
                 <span data-i18n="system.title">系统状态</span>
             </h1>
-            <p class="text-base-content/60 text-sm mt-1" data-i18n="system.subtitle">外部 API 连接与健康监控</p>
+            <p class="text-base-content/60 text-sm mt-1" data-i18n="system.subtitle">外部 API 连接与健康监控（内存实时数据）</p>
         </div>
-        <div class="flex items-center gap-2">
-            <form method="post" action="/system/health-check" style="display:inline;">
-                <button type="submit" class="btn btn-sm btn-primary">
-                    <i class="ph-bold ph-heartbeat"></i>
-                    立即检查
-                </button>
-            </form>
-            <button onclick="window.location.reload()" class="btn btn-sm btn-ghost">
-                <i class="ph-bold ph-arrow-clockwise"></i>
-                <span data-i18n="action.refresh">刷新</span>
-            </button>
-        </div>
-
+        <button onclick="window.location.reload()" class="btn btn-sm btn-ghost">
+            <i class="ph-bold ph-arrow-clockwise"></i>
+            <span data-i18n="action.refresh">刷新</span>
+        </button>
     </div>
 
-    <div class="card bg-base-100 shadow-sm border border-base-200">
+    <!-- 服务状态表格 -->
+    <div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
         <div class="card-content p-0">
             <div class="table-container">
                 <table class="table table-zebra w-full">
@@ -50,24 +42,25 @@
                             </td>
                             <td>
                                 {% if status.status == 'online' %}
-                                    <span class="badge badge-success gap-1">
-                                        <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
-                                        Online
-                                    </span>
+                                <span class="badge badge-success gap-1">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
+                                    Online
+                                </span>
                                 {% else %}
-                                    <span class="badge badge-error gap-1">
-                                        <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
-                                        Error
-                                    </span>
+                                <span class="badge badge-error gap-1">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
+                                    Error
+                                </span>
                                 {% endif %}
                             </td>
                             <td class="font-mono text-sm">
                                 {% if status.latency_ms > 0 %}
-                                    <span class="{{ 'text-success' if status.latency_ms < 500 else 'text-warning' if status.latency_ms < 1500 else 'text-error' }}">
-                                        {{ status.latency_ms }}ms
-                                    </span>
+                                <span
+                                    class="{{ 'text-success' if status.latency_ms < 500 else 'text-warning' if status.latency_ms < 1500 else 'text-error' }}">
+                                    {{ status.latency_ms }}ms
+                                </span>
                                 {% else %}
-                                    <span class="opacity-30">-</span>
+                                <span class="opacity-30">-</span>
                                 {% endif %}
                             </td>
                             <td class="text-sm opacity-70">
@@ -81,7 +74,7 @@
                         <tr>
                             <td colspan="6" class="text-center py-12 text-base-content/50">
                                 <i class="ph-bold ph-activity text-3xl mb-2 block opacity-30"></i>
-                                暂无状态记录
+                                暂无状态记录 — 服务启动后，API 请求会自动记录在此
                             </td>
                         </tr>
                         {% endfor %}
@@ -90,5 +83,51 @@
             </div>
         </div>
     </div>
+
+    <!-- 最近请求日志 -->
+    {% if recent_logs %}
+    <div class="card bg-base-100 shadow-sm border border-base-200">
+        <div class="card-content">
+            <h3 class="text-lg font-bold mb-3 flex items-center gap-2">
+                <i class="ph-bold ph-list-bullets"></i>
+                最近请求日志
+            </h3>
+            <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                <table class="table table-zebra w-full text-sm">
+                    <thead>
+                        <tr class="bg-base-200/50 text-xs uppercase tracking-wider text-base-content/60">
+                            <th>时间</th>
+                            <th>服务</th>
+                            <th>状态</th>
+                            <th>延迟</th>
+                            <th>消息</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in recent_logs %}
+                        <tr>
+                            <td class="font-mono text-xs opacity-70 whitespace-nowrap">{{
+                                log.timestamp.strftime('%H:%M:%S') }}</td>
+                            <td class="font-medium">{{ log.name }}</td>
+                            <td>
+                                {% if log.status == 'online' %}
+                                <span class="text-success text-xs">✓</span>
+                                {% else %}
+                                <span class="text-error text-xs">✗</span>
+                                {% endif %}
+                            </td>
+                            <td class="font-mono text-xs">
+                                {% if log.latency_ms > 0 %}{{ log.latency_ms }}ms{% else %}-{% endif %}
+                            </td>
+                            <td class="text-xs opacity-60 max-w-sm truncate" title="{{ log.message }}">{{ log.message }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

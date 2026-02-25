@@ -1116,217 +1116,69 @@ async def toggle_star(id: int):
 
 @app.get("/crawler/sources", response_class=HTMLResponse)
 async def list_crawl_sources(request: Request):
-    """List all crawl sources"""
-    from models.crawler import CrawlSource
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(select(CrawlSource).order_by(CrawlSource.id))
-        sources = result.scalars().all()
-        
-        return templates.TemplateResponse("crawler_sources.html", {
-            "request": request,
-            "sources": sources
+    """展示硬编码的 ETF 爬虫数据源（只读）"""
+    from crawler.scheduler import HARDCODED_SOURCES, _last_run, _running
+
+    sources = []
+    for src in HARDCODED_SOURCES:
+        name = src["name"]
+        sources.append({
+            "name": name,
+            "url": src["url"],
+            "spider_type": src["spider_type"],
+            "interval": 360,
+            "last_run_at": _last_run.get(name),
+            "is_running": name in _running,
         })
 
-@app.post("/crawler/sources/add")
-async def add_crawl_source(
-    name: str = Form(...),
-    url: str = Form(...),
-    spider_type: str = Form(...),
-    interval: int = Form(360)
-):
-    """Add a new crawl source"""
-    from models.crawler import CrawlSource
-    async with AsyncSessionLocal() as db:
-        source = CrawlSource(
-            name=name,
-            url=url,
-            spider_type=spider_type,
-            schedule_interval=interval,
-            is_active=1
-        )
-        db.add(source)
-        await db.commit()
-    return RedirectResponse(url="/crawler/sources", status_code=303)
+    return templates.TemplateResponse("crawler_sources.html", {
+        "request": request,
+        "sources": sources,
+    })
 
-@app.post("/crawler/sources/{id}/update")
-async def update_crawl_source(
-    id: int,
-    name: str = Form(...),
-    url: str = Form(...),
-    spider_type: str = Form(...),
-    interval: int = Form(...)
-):
-    """Update crawl source"""
-    from models.crawler import CrawlSource
-    async with AsyncSessionLocal() as db:
-        source = await db.get(CrawlSource, id)
-        if source:
-            source.name = name
-            source.url = url
-            source.spider_type = spider_type
-            source.schedule_interval = interval
-            await db.commit()
-    return RedirectResponse(url="/crawler/sources", status_code=303)
 
 @app.get("/system/status", response_class=HTMLResponse)
 async def system_status(request: Request):
-    """系统状态页"""
-    from models.system import ApiStatus
-    
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(select(ApiStatus).order_by(ApiStatus.name))
-        api_status_list = result.scalars().all()
-        
-        return templates.TemplateResponse("system_status.html", {
-            "request": request,
-            "api_status_list": api_status_list
-        })
-
-
-@app.post("/system/health-check")
-async def run_health_check(background_tasks: BackgroundTasks):
-    """手动触发所有服务健康检查，写入 api_status 表"""
-    background_tasks.add_task(_do_health_checks)
-    return RedirectResponse(url="/system/status", status_code=303)
-
-
-async def _do_health_checks():
-    """执行所有服务健康检查并写入数据库"""
-    import time as _time
-    import aiohttp
+    """系统状态页 — 从内存读取，不碰数据库"""
     from core.monitor import monitor
-    from config import FRED_API_KEY, OPENROUTER_API_KEY, LLM_ENABLED
 
-    checks = []
+    return templates.TemplateResponse("system_status.html", {
+        "request": request,
+        "api_status_list": monitor.get_latest_status(),
+        "recent_logs": monitor.get_recent_logs(50),
+    })
 
-    # 1. Binance API
-    try:
-        start = _time.time()
-        async with aiohttp.ClientSession() as s:
-            async with s.get("https://api.binance.com/api/v3/ping", timeout=aiohttp.ClientTimeout(total=8)) as r:
-                latency = int((_time.time() - start) * 1000)
-                if r.status == 200:
-                    checks.append(("Binance API (Public)", "REST", True, latency, "ping OK"))
-                else:
-                    checks.append(("Binance API (Public)", "REST", False, latency, f"HTTP {r.status}"))
-    except Exception as e:
-        checks.append(("Binance API (Public)", "REST", False, 0, str(e)[:120]))
-
-    # 2. FRED API
-    if FRED_API_KEY:
-        try:
-            start = _time.time()
-            url = f"https://api.stlouisfed.org/fred/series?series_id=DGS10&api_key={FRED_API_KEY}&file_type=json"
-            async with aiohttp.ClientSession() as s:
-                async with s.get(url, timeout=aiohttp.ClientTimeout(total=8)) as r:
-                    latency = int((_time.time() - start) * 1000)
-                    checks.append(("FRED API", "Macro", r.status == 200, latency,
-                                   "OK" if r.status == 200 else f"HTTP {r.status}"))
-        except Exception as e:
-            checks.append(("FRED API", "Macro", False, 0, str(e)[:120]))
-    else:
-        checks.append(("FRED API", "Macro", False, 0, "未配置 FRED_API_KEY"))
-
-    # 3. Fear & Greed
-    try:
-        start = _time.time()
-        async with aiohttp.ClientSession() as s:
-            async with s.get("https://api.alternative.me/fng/", timeout=aiohttp.ClientTimeout(total=8)) as r:
-                latency = int((_time.time() - start) * 1000)
-                checks.append(("Fear & Greed Index", "REST", r.status == 200, latency,
-                               "OK" if r.status == 200 else f"HTTP {r.status}"))
-    except Exception as e:
-        checks.append(("Fear & Greed Index", "REST", False, 0, str(e)[:120]))
-
-    # 4. OpenRouter
-    if OPENROUTER_API_KEY:
-        try:
-            start = _time.time()
-            async with aiohttp.ClientSession() as s:
-                async with s.get("https://openrouter.ai/api/v1/models",
-                                 headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-                                 timeout=aiohttp.ClientTimeout(total=8)) as r:
-                    latency = int((_time.time() - start) * 1000)
-                    checks.append(("OpenRouter API", "LLM", r.status == 200, latency,
-                                   "OK" if r.status == 200 else f"HTTP {r.status}"))
-        except Exception as e:
-            checks.append(("OpenRouter API", "LLM", False, 0, str(e)[:120]))
-    else:
-        checks.append(("OpenRouter API", "LLM", False, 0, "未配置 OPENROUTER_API_KEY"))
-
-    # 写入数据库
-    for name, type_, ok, latency, msg in checks:
-        await monitor.record_status(name, type_, ok, latency, msg)
-
-    logger.info(f"Health check completed: {len(checks)} services checked")
-
-@app.post("/crawler/sources/{id}/run")
-async def run_crawl_source_now(id: int):
-    """Manually trigger a crawl for a source (runs in background, non-blocking)"""
-    import asyncio
-    from models.crawler import CrawlSource
-    from crawler.scheduler import _run_spider_bg, _running_tasks
-
-    async with AsyncSessionLocal() as db:
-        source = await db.get(CrawlSource, id)
-        if not source:
-            raise HTTPException(status_code=404, detail="Source not found")
-
-        if id in _running_tasks:
-            # Already running, just redirect back
-            return RedirectResponse(url="/crawler/sources", status_code=303)
-
-        # Fire-and-forget: background task, does NOT block FastAPI event loop
-        task = asyncio.create_task(_run_spider_bg(id, source.name))
-        _running_tasks[id] = task
-
-    return RedirectResponse(url="/crawler/sources", status_code=303)
-
-@app.post("/crawler/sources/{id}/toggle")
-async def toggle_crawl_source(id: int):
-    """Toggle source active status"""
-    from models.crawler import CrawlSource
-    async with AsyncSessionLocal() as db:
-        source = await db.get(CrawlSource, id)
-        if source:
-            source.is_active = 0 if source.is_active else 1
-            await db.commit()
-    return RedirectResponse(url="/crawler/sources", status_code=303)
 
 @app.get("/crawler/data", response_class=HTMLResponse)
 async def view_crawled_data(request: Request):
     """View crawled data"""
-    from models.crawler import CrawledData, CrawlSource
+    from models.crawler import CrawledData
     async with AsyncSessionLocal() as db:
-        # Fetch last 100 items joined with source
         result = await db.execute(
             select(CrawledData)
             .order_by(desc(CrawledData.created_at))
             .limit(100)
         )
-        data = result.scalars().all()
-        
-        # Eager load source manually or use joinedload if configured, 
-        # but scalars with lazy load might be issues in async without explicit handling
-        # For simplicity, let's trust lazy loading or relationship setup in async
-        # (Though explicit join is better for performance)
-        result = await db.execute(
-            select(CrawledData, CrawlSource.name)
-            .join(CrawlSource, CrawledData.source_id == CrawlSource.id)
-            .order_by(desc(CrawledData.created_at))
-            .limit(100)
-        )
+        items = result.scalars().all()
+
+        # 用 data_type 推断来源名
+        SOURCE_NAMES = {
+            "btc_etf_flow": "Farside BTC ETF",
+            "eth_etf_flow": "Farside ETH ETF",
+            "sol_etf_flow": "Farside SOL ETF",
+        }
         rows = []
-        for d, source_name in result:
-             rows.append({
-                 "source": source_name,
-                 "type": d.data_type,
-                 "date": d.date,
-                 "value": d.value,
-                 "created_at": d.created_at
-             })
-             
+        for d in items:
+            rows.append({
+                "source": SOURCE_NAMES.get(d.data_type, d.data_type or "Unknown"),
+                "type": d.data_type,
+                "date": d.date,
+                "value": d.value,
+                "created_at": d.created_at,
+            })
+
         return templates.TemplateResponse("crawled_data.html", {
+
             "request": request,
             "data": rows
         })
