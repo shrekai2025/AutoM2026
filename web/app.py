@@ -512,6 +512,24 @@ async def market_watch(request: Request):
         sbet_nav = await stock_collector.get_nav_ratio("SBET", current_btc_usd)
         bmnr_nav = await stock_collector.get_nav_ratio("BMNR", current_btc_usd)
 
+        # ETF 链上监控 (yfinance AUM + Blockchain.info + Etherscan)
+        from data_collectors.etf_onchain_collector import etf_onchain_collector
+        eth_price_d = await binance_collector.get_price("ETHUSDT")
+        current_eth_usd = eth_price_d["price"] if eth_price_d else 0
+        _t = _time.time()
+        try:
+            etf_onchain_cards = await etf_onchain_collector.get_macro_indicators(
+                btc_price=current_btc_usd, eth_price=current_eth_usd
+            )
+        except Exception as _e:
+            logger.warning(f"ETF onchain collector error: {_e}")
+            etf_onchain_cards = []
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status(
+            "ETF Onchain", "ETF", bool(etf_onchain_cards), _lat,
+            f"{len(etf_onchain_cards)} metrics" if etf_onchain_cards else "No data"
+        )
+
         # Stablecoin Supply
         from data_collectors import stablecoin_collector
         _t = _time.time()
@@ -657,7 +675,38 @@ async def market_watch(request: Request):
                 "class": "text-success" if val_m >= 0 else "text-error",
                 "desc": f"最近一日 ({sol_flow.date.strftime('%m-%d')})"
             })
-            
+
+        # 8. Arkham 链上 ETF 持仓量 (IBIT/FBTC BTC/ETH 持有量)
+        # 数据来自 Arkham Intelligence 页面爬虫，存入 crawled_data 表
+        _arkham_types = {
+            "ibit_holdings_btc": ("IBIT 链上BTC", "IBIT On-chain BTC", "IBIT-BTC", "BTC", ["链上", "BTC", "ETF"]),
+            "ibit_holdings_eth": ("IBIT 链上ETH", "IBIT On-chain ETH", "IBIT-ETH", "ETH", ["链上", "ETH", "ETF"]),
+            "fbtc_holdings_btc": ("FBTC 链上BTC", "FBTC On-chain BTC", "FBTC-BTC", "BTC", ["链上", "BTC", "ETF"]),
+            "fbtc_holdings_eth": ("FBTC 链上ETH", "FBTC On-chain ETH", "FBTC-ETH", "ETH", ["链上", "ETH", "ETF"]),
+            "blackrock_total_usd": ("贝莱德总持仓", "BlackRock Total Holdings", "IBIT-USD", "USD", ["链上", "BTC", "ETF"]),
+            "fidelity_total_usd":  ("富达总持仓",   "Fidelity Total Holdings",   "FBTC-USD", "USD", ["链上", "BTC", "ETF"]),
+        }
+        for _dtype, (_zh, _en, _abbr, _asset, _tags) in _arkham_types.items():
+            _row = await get_latest_flow(_dtype)
+            if not _row or not _row.value:
+                continue
+            _val = _row.value
+            _date_str = _row.date.strftime("%m-%d") if _row.date else ""
+            if _asset == "USD":
+                _disp = f"${_val/1e9:.2f}B"
+            else:
+                # 持仓量（BTC/ETH 枚数）
+                _disp = f"{_val:,.0f} {_asset}"
+            macro_indicators.append({
+                "name_zh": _zh,
+                "name_en": _en,
+                "abbr": _abbr,
+                "value": _disp,
+                "tags": _tags,
+                "class": "text-primary",
+                "desc": f"来源: Arkham Intel | {_date_str}",
+            })
+
         # --- Onchain Data ---
         if hash_rate and "value" in hash_rate:
             val_eh = hash_rate["value"] / 1_000_000_000_000_000_000
@@ -774,6 +823,9 @@ async def market_watch(request: Request):
                     "class": st.get("class", "text-warning"),
                     "desc": f"市值相对其实际持有的BTC总价值比率"
                 })
+
+        # --- ETF 链上监控卡片 (AUM + 持仓余额) ---
+        macro_indicators.extend(etf_onchain_cards)
 
         return templates.TemplateResponse("market.html", {
             "request": request,
@@ -1169,7 +1221,7 @@ async def toggle_star(id: int):
 @app.get("/crawler/sources", response_class=HTMLResponse)
 async def list_crawl_sources(request: Request):
     """展示硬编码的 ETF 爬虫数据源（只读）"""
-    from crawler.scheduler import HARDCODED_SOURCES, _last_run, _running
+    from crawler.scheduler import HARDCODED_SOURCES, _last_run, _running, CRAWL_INTERVAL_MINUTES
 
     sources = []
     for src in HARDCODED_SOURCES:
@@ -1178,7 +1230,7 @@ async def list_crawl_sources(request: Request):
             "name": name,
             "url": src["url"],
             "spider_type": src["spider_type"],
-            "interval": 360,
+            "interval": CRAWL_INTERVAL_MINUTES,
             "last_run_at": _last_run.get(name),
             "is_running": name in _running,
         })
@@ -1218,6 +1270,13 @@ async def view_crawled_data(request: Request):
             "btc_etf_flow": "Farside BTC ETF",
             "eth_etf_flow": "Farside ETH ETF",
             "sol_etf_flow": "Farside SOL ETF",
+            # Arkham Sources
+            "ibit_holdings_btc": "Arkham BlackRock (BTC)",
+            "ibit_holdings_eth": "Arkham BlackRock (ETH)",
+            "blackrock_total_usd": "Arkham BlackRock (Net Value)",
+            "fbtc_holdings_btc": "Arkham Fidelity (BTC)",
+            "fbtc_holdings_eth": "Arkham Fidelity (ETH)",
+            "fidelity_total_usd": "Arkham Fidelity (Net Value)",
         }
         rows = []
         for d in items:
@@ -1235,6 +1294,73 @@ async def view_crawled_data(request: Request):
             "data": rows
         })
 # ==================== API 路由 ====================
+
+@app.get("/api/etf/all")
+async def get_all_etf_data(live: bool = False):
+    """
+    返回所有 ETF 链上持仓数据
+    
+    - 默认 (live=false): 从数据库读取 Arkham 爬虫最新快照（毫秒级响应）
+    - live=true: 实时调用外部 API（耗时 30~60s，慎用）
+    
+    数据来源:
+      - Arkham 爬虫写入的 crawled_data (ibit_holdings_btc 等)
+      - yfinance ETF AUM（需 live=true）
+      - mempool.space BTC 地址余额（需 live=true）
+      - blockscout ETH 地址余额（需 live=true）
+    """
+    from models.crawler import CrawledData
+
+    if live:
+        # 实时调用外部 API（耗时较长）
+        from data_collectors.etf_onchain_collector import etf_onchain_collector
+        try:
+            data = await etf_onchain_collector.get_all()
+            return {"status": "ok", "source": "live", "data": data}
+        except Exception as e:
+            logger.error(f"ETF live fetch error: {e}")
+            return {"status": "error", "message": str(e)}
+
+    # 默认：从数据库读取最新爬虫快照（快速）
+    ETF_DB_TYPES = [
+        "ibit_holdings_btc", "ibit_holdings_eth", "blackrock_total_usd",
+        "fbtc_holdings_btc", "fbtc_holdings_eth", "fidelity_total_usd",
+        "btc_etf_flow", "eth_etf_flow", "sol_etf_flow",
+    ]
+    ETF_LABELS = {
+        "ibit_holdings_btc":  {"name": "IBIT 链上BTC持仓",   "unit": "BTC",  "entity": "BlackRock"},
+        "ibit_holdings_eth":  {"name": "IBIT 链上ETH持仓",   "unit": "ETH",  "entity": "BlackRock"},
+        "blackrock_total_usd":{"name": "贝莱德 链上总规模",  "unit": "USD",  "entity": "BlackRock"},
+        "fbtc_holdings_btc":  {"name": "FBTC 链上BTC持仓",   "unit": "BTC",  "entity": "Fidelity"},
+        "fbtc_holdings_eth":  {"name": "FBTC 链上ETH持仓",   "unit": "ETH",  "entity": "Fidelity"},
+        "fidelity_total_usd": {"name": "富达 链上总规模",     "unit": "USD",  "entity": "Fidelity"},
+        "btc_etf_flow":       {"name": "BTC ETF 当日净流入", "unit": "USD",  "entity": "Farside"},
+        "eth_etf_flow":       {"name": "ETH ETF 当日净流入", "unit": "USD",  "entity": "Farside"},
+        "sol_etf_flow":       {"name": "SOL ETF 当日净流入", "unit": "USD",  "entity": "Farside"},
+    }
+
+    result = {}
+    async with AsyncSessionLocal() as db:
+        for dtype in ETF_DB_TYPES:
+            row = await db.execute(
+                select(CrawledData)
+                .where(CrawledData.data_type == dtype)
+                .order_by(desc(CrawledData.date), desc(CrawledData.created_at))
+                .limit(1)
+            )
+            row = row.scalar_one_or_none()
+            label = ETF_LABELS.get(dtype, {})
+            result[dtype] = {
+                "name":       label.get("name", dtype),
+                "unit":       label.get("unit", ""),
+                "entity":     label.get("entity", ""),
+                "value":      row.value if row else None,
+                "date":       row.date.isoformat() if row and row.date else None,
+                "updated_at": row.created_at.isoformat() if row and row.created_at else None,
+                "available":  row is not None,
+            }
+
+    return {"status": "ok", "source": "db", "data": result}
 
 @app.get("/api/price/{symbol}")
 async def get_price(symbol: str):

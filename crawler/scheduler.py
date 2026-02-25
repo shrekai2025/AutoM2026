@@ -32,12 +32,23 @@ HARDCODED_SOURCES = [
         "url": "https://farside.co.uk/sol/",
         "spider_type": "farside",
     },
+    # ── Arkham Intelligence 实体页面 (ETF 链上持仓) ──
+    {
+        "name": "Arkham BlackRock",
+        "url": "https://intel.arkm.com/explorer/entity/blackrock",
+        "spider_type": "arkham",
+    },
+    {
+        "name": "Arkham Fidelity",
+        "url": "https://intel.arkm.com/explorer/entity/fidelity",
+        "spider_type": "arkham",
+    },
 ]
 
 # 上次运行时间记录（内存）
 _last_run: dict[str, datetime] = {}
 _running: set[str] = set()
-CRAWL_INTERVAL_MINUTES = 360  # 每 6 小时
+CRAWL_INTERVAL_MINUTES = 60  # 每 1 小时
 
 
 async def _run_one_source(source: dict):

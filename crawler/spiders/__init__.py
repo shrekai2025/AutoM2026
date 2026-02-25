@@ -31,3 +31,4 @@ def get_spider_class(name: str) -> Optional[Type[BaseSpider]]:
 
 # Import spiders to register them
 from . import farside
+from . import arkham
