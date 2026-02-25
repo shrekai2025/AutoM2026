@@ -1,7 +1,8 @@
-FROM python:3.10-slim
+FROM python:3.10-slim-bookworm
 
 # Install system dependencies needed for Playwright and other native python packages
-RUN apt-get update && apt-get install -y \
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && apt-get install -y \
     curl \
     gcc \
     libffi-dev \
@@ -11,7 +12,7 @@ WORKDIR /app
 
 # Copy requirements and install python deps
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com -r requirements.txt
 
 # Install Playwright browser binaries (Chromium only for ETF flow crawler)
 RUN playwright install chromium --with-deps
