@@ -442,14 +442,57 @@ async def market_watch(request: Request):
         from data_collectors.fred_collector import fred_collector
         from data_collectors import fear_greed_collector
         from data_collectors.onchain_collector import onchain_collector
+        from core.monitor import monitor
+        import time as _time
         
+        # --- FRED ---
+        _t = _time.time()
         macro_raw = await fred_collector.get_macro_data()
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status("FRED API", "Macro", bool(macro_raw), _lat,
+                                     f"Got {len(macro_raw)} fields" if macro_raw else "No data")
+
+        # --- Fear & Greed ---
+        _t = _time.time()
         fg_raw = await fear_greed_collector.get_current()
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status("Fear & Greed", "REST", bool(fg_raw), _lat,
+                                     f"Value: {fg_raw.get('value')}" if fg_raw else "No data")
+
+        # --- Mempool (Hashrate) ---
+        _t = _time.time()
         hash_rate = await onchain_collector.get_hashrate()
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status("Mempool API", "Onchain", bool(hash_rate and "value" in hash_rate), _lat,
+                                     "Hashrate OK" if hash_rate else "No data")
+
+        # --- Mempool (Halving) ---
+        _t = _time.time()
         halving = await onchain_collector.get_halving_info()
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status("Mempool Halving", "Onchain", bool(halving), _lat,
+                                     f"Height: {halving.get('current_height')}" if halving else "No data")
+
+        # --- AHR999 (depends on Binance klines) ---
+        _t = _time.time()
         ahr999 = await onchain_collector.get_ahr999()
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status("AHR999 Calc", "Derived", bool(ahr999), _lat,
+                                     f"Value: {ahr999.get('value')}" if ahr999 else "Calc failed")
+
+        # --- 200WMA ---
+        _t = _time.time()
         wma200 = await onchain_collector.get_200wma()
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status("200WMA Calc", "Derived", bool(wma200), _lat,
+                                     f"Value: ${wma200.get('value'):,.0f}" if wma200 and "value" in wma200 else "Calc failed")
+
+        # --- MVRV (CoinMetrics) ---
+        _t = _time.time()
         mvrv = await onchain_collector.get_mvrv_ratio()
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status("CoinMetrics MVRV", "REST", bool(mvrv and "value" in mvrv), _lat,
+                                     f"MVRV: {mvrv.get('value')}" if mvrv else "No data")
         
         # New Miners and Stock NAV
         from data_collectors.mining_collector import mining_collector
@@ -459,7 +502,11 @@ async def market_watch(request: Request):
         btc_price_d = await binance_collector.get_price("BTCUSDT")
         current_btc_usd = btc_price_d["price"] if btc_price_d else 0
         
+        _t = _time.time()
         miners_data = await mining_collector.get_miners_data()
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status("Mining Data", "Scraper", bool(miners_data), _lat,
+                                     f"{miners_data.get('total_miners', 0)} miners" if miners_data else "No data")
         
         mstr_nav = await stock_collector.get_nav_ratio("MSTR", current_btc_usd)
         sbet_nav = await stock_collector.get_nav_ratio("SBET", current_btc_usd)
@@ -467,7 +514,12 @@ async def market_watch(request: Request):
 
         # Stablecoin Supply
         from data_collectors import stablecoin_collector
+        _t = _time.time()
         stablecoin_supply = await stablecoin_collector.get_latest_supply()
+        _lat = int((_time.time() - _t) * 1000)
+        await monitor.record_status("Stablecoin Supply", "REST", stablecoin_supply is not None and stablecoin_supply > 0, _lat,
+                                     f"${stablecoin_supply/1e9:.1f}B" if stablecoin_supply else "No data")
+
         
         # Format for UI
         macro_indicators = []
