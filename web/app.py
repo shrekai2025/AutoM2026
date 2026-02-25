@@ -1182,6 +1182,28 @@ async def system_status(request: Request):
             "api_status_list": api_status_list
         })
 
+@app.post("/crawler/sources/{id}/run")
+async def run_crawl_source_now(id: int):
+    """Manually trigger a crawl for a source (runs in background, non-blocking)"""
+    import asyncio
+    from models.crawler import CrawlSource
+    from crawler.scheduler import _run_spider_bg, _running_tasks
+
+    async with AsyncSessionLocal() as db:
+        source = await db.get(CrawlSource, id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        if id in _running_tasks:
+            # Already running, just redirect back
+            return RedirectResponse(url="/crawler/sources", status_code=303)
+
+        # Fire-and-forget: background task, does NOT block FastAPI event loop
+        task = asyncio.create_task(_run_spider_bg(id, source.name))
+        _running_tasks[id] = task
+
+    return RedirectResponse(url="/crawler/sources", status_code=303)
+
 @app.post("/crawler/sources/{id}/toggle")
 async def toggle_crawl_source(id: int):
     """Toggle source active status"""
