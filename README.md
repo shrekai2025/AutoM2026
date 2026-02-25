@@ -12,6 +12,8 @@
 
 ## 快速开始
 
+### 本地开发
+
 ```bash
 # 进入项目目录
 cd AutoM2026
@@ -22,6 +24,10 @@ chmod +x start.sh
 ```
 
 启动后访问: http://localhost:8080
+
+### 服务器部署
+
+📖 查看部署文档：[README_DEPLOY.md](./README_DEPLOY.md)
 
 ## 目录结构
 

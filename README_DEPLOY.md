@@ -1,4 +1,11 @@
-# AutoM2026 快速部署指南（GitHub 方式）
+# AutoM2026 部署指南
+
+> 📖 **文档说明**：
+> - **本文档**：快速部署流程（推荐首次部署使用）
+> - [UBUNTU_DEPLOY_GUIDE.md](./UBUNTU_DEPLOY_GUIDE.md)：完整技术文档（故障排查、性能优化）
+> - [API_KEYS_GUIDE.md](./API_KEYS_GUIDE.md)：如何获取 API Keys
+
+---
 
 ## 前提条件
 
@@ -80,12 +87,29 @@ cd AutoMoney/AutoM2026
 
 ### 3. 配置环境变量
 
+**方法一：使用配置脚本（推荐）**
+
+```bash
+# 运行配置向导
+chmod +x setup_env.sh
+./setup_env.sh
+
+# 按提示输入 API Keys
+```
+
+**方法二：手动编辑**
+
 ```bash
 # 复制模板
 cp .env.example .env
 
-# 编辑配置
+# 使用 nano 编辑（推荐新手）
+nano .env
+# 按 Ctrl+O 保存，Ctrl+X 退出
+
+# 或使用 vim
 vim .env
+# 按 i 进入编辑模式，编辑后按 Esc，输入 :wq 保存退出
 ```
 
 填入你的 API Keys：
