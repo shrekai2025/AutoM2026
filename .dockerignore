@@ -1,0 +1,11 @@
+venv/
+.git/
+__pycache__/
+*.pyc
+*.pyo
+logs/
+data/
+.env
+.DS_Store
+.claude/
+.cursor/

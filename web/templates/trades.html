@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container animate-fade-in">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-xl font-bold mb-1" data-i18n="trade.title">交易历史</h1>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-content p-0">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-i18n="trade.time">时间</th>
+                            <th data-i18n="strategy.name">策略</th>
+                            <th data-i18n="position.symbol">标的</th>
+                            <th data-i18n="trade.side">方向</th>
+                            <th class="text-right" data-i18n="trade.price">成交价</th>
+                            <th class="text-right" data-i18n="trade.amount">数量</th>
+                            <th class="text-right" data-i18n="trade.value">金额</th>
+                            <th data-i18n="trade.reason">信号理由</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for trade in trades %}
+                        <tr>
+                            <td class="text-muted text-sm">{{ trade.executed_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>
+                                <span class="badge badge-outline">{{ trade.strategy_id }}</span>
+                            </td>
+                            <td>{{ trade.symbol }}</td>
+                            <td>
+                                <span class="badge {{ 'badge-green' if trade.side == 'BUY' else 'badge-red' }}">
+                                    {{ trade.side }}
+                                </span>
+                            </td>
+                            <td class="text-right">${{ "%.2f"|format(trade.price) }}</td>
+                            <td class="text-right">{{ trade.amount }}</td>
+                            <td class="text-right text-muted">${{ "%.2f"|format(trade.price * trade.amount) }}</td>
+                            <td class="text-sm">
+                                {% if trade.reason %}
+                                    {{ trade.reason }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-8" data-i18n="status.noData">暂无交易记录</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

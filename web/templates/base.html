@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title | default("AutoM2026") }}</title>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/css/variables.css?v=20260121_2">
+    <link rel="stylesheet" href="/static/css/utilities.css?v=20260121_2">
+    <link rel="stylesheet" href="/static/css/components.css?v=20260121_2">
+
+    <!-- Icons (Phosphor) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+        /* Layout specific styles */
+        .app-shell {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            height: 64px;
+            background-color: var(--card);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            width: 100%;
+        }
+
+        .navbar-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .main-content {
+            flex: 1;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 0.5rem;
+            height: 100%;
+            align-items: center;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            color: var(--muted-foreground);
+            text-decoration: none;
+            border-radius: var(--radius);
+            font-size: var(--text-sm);
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .nav-item:hover,
+        .nav-item.active {
+            background-color: var(--accent);
+            color: var(--foreground);
+        }
+
+        .nav-item i {
+            display: flex;
+        }
+
+        .logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--foreground);
+            text-decoration: none;
+        }
+
+        .lang-switcher {
+            display: flex;
+            gap: 0.25rem;
+            margin-left: 1rem;
+            padding-left: 1rem;
+            border-left: 1px solid var(--border);
+        }
+
+        .lang-btn {
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--radius);
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--muted-foreground);
+            font-size: var(--text-xs);
+            cursor: pointer;
+        }
+
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* Mobile menu button (hidden by default on desktop) */
+        .mobile-menu-btn {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .navbar-container {
+                padding: 0 1rem;
+            }
+
+            .nav-links {
+                display: none;
+                /* Todo: Implement mobile menu toggle */
+            }
+
+            .logo span {
+                display: block;
+            }
+        }
+
+        /* Language Visibility - Critical for i18n */
+        html[lang="zh"] .show-en-only,
+        html:not([lang="en"]) .show-en-only {
+            display: none !important;
+        }
+
+        html[lang="en"] .show-zh-only {
+            display: none !important;
+        }
+
+        /* Default: show Chinese when lang not set or is zh */
+        html:not([lang="en"]) .show-zh-only {
+            display: inline;
+        }
+
+        html[lang="en"] .show-en-only {
+            display: inline;
+        }
+    </style>
+    {% block head_extra %}{% endblock %}
+</head>
+
+<body>
+    <div class="app-shell">
+        <!-- Top Navigation -->
+        <header class="navbar">
+            <div class="navbar-container">
+                <a href="/" class="logo">
+                    <i class="ph-bold ph-lightning text-bull"></i>
+                    <span data-i18n="app.name">AutoM2026</span>
+                </a>
+
+                <nav class="nav-links">
+                    <a href="/" class="nav-item {% if request.url.path == '/' %}active{% endif %}">
+                        <i class="ph ph-squares-four" style="font-size: 18px;"></i>
+                        <span data-i18n="nav.dashboard">仪表盘</span>
+                    </a>
+                    <a href="/market" class="nav-item {% if request.url.path == '/market' %}active{% endif %}">
+                        <i class="ph ph-trend-up" style="font-size: 18px;"></i>
+                        <span data-i18n="nav.market">行情</span>
+                    </a>
+                    <a href="/strategies"
+                        class="nav-item {% if request.url.path.startswith('/strategies') %}active{% endif %}">
+                        <i class="ph ph-cpu" style="font-size: 18px;"></i>
+                        <span data-i18n="nav.strategies">策略库</span>
+                    </a>
+                    <a href="/positions" class="nav-item {% if request.url.path == '/positions' %}active{% endif %}">
+                        <i class="ph ph-briefcase" style="font-size: 18px;"></i>
+                        <span data-i18n="nav.positions">持仓</span>
+                    </a>
+                    <a href="/trades" class="nav-item {% if request.url.path == '/trades' %}active{% endif %}">
+                        <i class="ph ph-clock-counter-clockwise" style="font-size: 18px;"></i>
+                        <span data-i18n="nav.trades">历史交易</span>
+                    </a>
+
+                    <a href="/defi-lab" class="nav-item {% if request.url.path == '/defi-lab' %}active{% endif %}">
+                        <i class="ph ph-flask" style="font-size: 18px;"></i>
+                        <span data-i18n="nav.defi_lab">DeFi 分析</span>
+                    </a>
+
+                    <a href="/crawler/sources"
+                        class="nav-item {% if request.url.path.startswith('/crawler') %}active{% endif %}">
+                        <i class="ph ph-spider" style="font-size: 18px;"></i>
+                        <span data-i18n="nav.crawler">Crawler</span>
+                    </a>
+
+                    <a href="/system/status"
+                        class="nav-item {% if request.url.path == '/system/status' %}active{% endif %}">
+                        <i class="ph ph-pulse" style="font-size: 18px;"></i>
+                        <span data-i18n="nav.system">System</span>
+                    </a>
+
+                    <div class="lang-switcher">
+                        <button class="lang-btn" data-lang="zh">CN</button>
+                        <button class="lang-btn" data-lang="en">EN</button>
+                    </div>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/translations.js?v=20260121_4"></script>
+    <script src="/static/js/ui.js?v=20260121_4"></script>
+
+    <!-- Global Modal -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-title" class="modal-title">Confirm</h3>
+                <button id="modal-close" class="btn btn-ghost btn-sm" style="padding: 0.25rem;">
+                    <i class="ph ph-x" style="font-size: 16px;"></i>
+                </button>
+            </div>
+            <div id="modal-body" class="modal-body">
+                Are you sure?
+            </div>
+            <div class="modal-footer">
+                <button id="modal-cancel" class="btn btn-outline btn-sm" data-i18n="action.cancel">取消</button>
+                <button id="modal-confirm" class="btn btn-primary btn-sm" data-i18n="action.confirm">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Icons initialized automatically by script scan
+
+
+        // Live Indicator Logic
+        function updateIndicators() {
+            // Simple logic: if connected to server (which we are if page loaded), show connected
+            // In a real app, this would ping an API
+            const now = Date.now();
+            document.querySelectorAll('.live-indicator').forEach(el => {
+                // Mock logic: randomly simulate delay occasionally for demo
+                // ensure it stays connected mostly
+                el.className = 'live-indicator connected';
+            });
+        }
+        setInterval(updateIndicators, 5000);
+    </script>
+
+    <!-- Global Loading Overlay -->
+    <div id="global-loading" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(4px);
+        z-index: 9999;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 1rem;
+    ">
+        <div style="
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        "></div>
+        <div style="color: #94a3b8; font-size: 0.875rem;" data-i18n="msg.loading">加载中...</div>
+    </div>
+
+    <!-- Top Progress Bar -->
+    <div id="top-progress" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 3px;
+        background: linear-gradient(90deg, #3b82f6, #60a5fa);
+        z-index: 10000;
+        width: 0%;
+        transition: width 0.2s ease;
+        box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        display: none;
+    "></div>
+
+    <style>
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+
+    <script>
+        // Global Loading Manager
+        window.loading = {
+            overlay: document.getElementById('global-loading'),
+            progress: document.getElementById('top-progress'),
+            progressValue: 0,
+            progressInterval: null,
+
+            show() {
+                this.overlay.style.display = 'flex';
+                this.startProgress();
+            },
+
+            hide() {
+                this.overlay.style.display = 'none';
+                this.finishProgress();
+            },
+
+            startProgress() {
+                this.progressValue = 0;
+                this.progress.style.display = 'block';
+                this.progress.style.width = '0%';
+
+                // Simulate progress (fast at start, slow near end)
+                this.progressInterval = setInterval(() => {
+                    if (this.progressValue < 30) {
+                        this.progressValue += 10;
+                    } else if (this.progressValue < 60) {
+                        this.progressValue += 5;
+                    } else if (this.progressValue < 85) {
+                        this.progressValue += 2;
+                    } else if (this.progressValue < 95) {
+                        this.progressValue += 0.5;
+                    }
+                    this.progress.style.width = this.progressValue + '%';
+                }, 100);
+            },
+
+            finishProgress() {
+                clearInterval(this.progressInterval);
+                this.progress.style.width = '100%';
+                setTimeout(() => {
+                    this.progress.style.display = 'none';
+                    this.progress.style.width = '0%';
+                }, 300);
+            }
+        };
+
+        // Intercept all link clicks for loading indicator
+        document.addEventListener('click', function (e) {
+            const link = e.target.closest('a[href]');
+            if (link) {
+                const href = link.getAttribute('href');
+                // Only show loading for internal navigation (not # anchors, javascript:, or external)
+                if (href &&
+                    !href.startsWith('#') &&
+                    !href.startsWith('javascript:') &&
+                    !href.startsWith('http') &&
+                    !link.hasAttribute('target')) {
+                    window.loading.show();
+                }
+            }
+
+            // Also handle buttons with type="submit" in forms
+            const button = e.target.closest('button[type="submit"], input[type="submit"]');
+            if (button) {
+                const form = button.closest('form');
+                if (form && !form.hasAttribute('data-no-loading')) {
+                    // Add loading state to button
+                    button.disabled = true;
+                    const originalContent = button.innerHTML;
+                    button.dataset.originalContent = originalContent;
+                    button.innerHTML = '<span style="display:inline-flex;align-items:center;gap:0.5rem;"><span style="width:1rem;height:1rem;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span> 处理中...</span>';
+
+                    // Show global loading after a short delay (for forms that navigate)
+                    setTimeout(() => {
+                        if (!form.hasAttribute('data-ajax')) {
+                            window.loading.show();
+                        }
+                    }, 100);
+                }
+            }
+        });
+
+        // Hide loading when page finishes loading (for browser back/forward)
+        window.addEventListener('pageshow', function (e) {
+            window.loading.hide();
+            // Restore any disabled buttons
+            document.querySelectorAll('button[data-original-content]').forEach(btn => {
+                btn.disabled = false;
+                btn.innerHTML = btn.dataset.originalContent;
+                delete btn.dataset.originalContent;
+            });
+        });
+
+        // Also hide on DOMContentLoaded for initial load
+        document.addEventListener('DOMContentLoaded', function () {
+            window.loading.hide();
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

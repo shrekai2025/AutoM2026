@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container animate-fade-in">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-xl font-bold mb-2">
+                <span data-i18n="nav.dashboard">仪表盘</span>
+            </h1>
+            <p class="text-sm text-muted" data-i18n="dashboard.welcome" style="display: none;">欢迎回来，系统运行正常</p>
+        </div>
+        <div class="flex gap-2">
+            <span class="live-indicator connected" title="System Online"></span>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <!-- Total Assets -->
+        <div class="card hover:scale-102">
+            <div class="card-header">
+                <h3 class="card-title text-sm text-muted" data-i18n="dashboard.total_assets">总资产估值</h3>
+            </div>
+            <div class="card-content pt-0">
+                <div class="text-2xl font-bold flex items-center gap-2">
+                    ${{ "%.2f"|format(total_value) }}
+                    <span class="live-indicator connected"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total PnL -->
+        <div class="card hover:scale-102">
+            <div class="card-header">
+                <h3 class="card-title text-sm text-muted" data-i18n="dashboard.total_pnl">累计盈亏</h3>
+            </div>
+            <div class="card-content pt-0">
+                <div class="text-2xl font-bold {% if total_pnl >= 0 %}text-bull{% else %}text-bear{% endif %}">
+                    {{ "+" if total_pnl >= 0 else "" }}{{ "%.2f"|format(total_pnl) }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Strategies -->
+        <div class="card hover:scale-102">
+            <div class="card-header">
+                <h3 class="card-title text-sm text-muted" data-i18n="dashboard.active_strategies">活跃策略</h3>
+            </div>
+            <div class="card-content pt-0">
+                <div class="text-2xl font-bold">{{ active_strategies_count }} / {{ total_strategies_count }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Starred Markets -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        {% for market in starred_markets %}
+        <div class="card card-gradient">
+            <div class="card-header flex-row items-center justify-between pb-2">
+                <h3 class="card-title">{{ market.symbol }}/USDT</h3>
+                {% if market.symbol == 'BTC' and not market.valid %}
+                    <!-- Fallback -->
+                {% else %}
+                   <i class="ph-fill ph-star text-yellow-400" style="font-size: 16px;"></i>
+                {% endif %}
+            </div>
+            <div class="card-content pt-2">
+                <div class="flex items-end justify-between">
+                    <div class="text-2xl font-bold flex items-center gap-2">
+                        ${{ "%.2f"|format(market.price) }}
+                        <span class="live-indicator connected"></span>
+                    </div>
+                    {% if market.change != 0 %}
+                    <div class="text-sm font-medium {{ 'text-bull' if market.change >= 0 else 'text-bear' }}">
+                        {{ "+" if market.change >= 0 else "" }}{{ "%.2f"|format(market.change) }}%
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+        <div class="card-header flex-row items-center justify-between">
+            <h3 class="card-title" data-i18n="dashboard.recent_activity">最近活动</h3>
+            <a href="/trades" class="btn btn-sm btn-ghost" data-i18n="nav.trades">查看全部</a>
+        </div>
+        <div class="card-content p-0">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-i18n="trade.time">时间</th>
+                            <th data-i18n="strategy.name">策略</th>
+                            <th data-i18n="trade.side">方向</th>
+                            <th class="text-right" data-i18n="trade.price">价格</th>
+                            <th class="text-right" data-i18n="trade.amount">数量</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for trade in recent_trades %}
+                        <tr>
+                            <td>{{ trade.executed_at.strftime('%H:%M:%S') }}</td>
+                            <td>
+                                <span class="badge badge-outline">{{ trade.strategy_id }}</span>
+                            </td>
+                            <td>
+                                <span class="badge {{ 'badge-green' if trade.side == 'BUY' else 'badge-red' }}">
+                                    {{ trade.side }}
+                                </span>
+                            </td>
+                            <td class="text-right">${{ "%.2f"|format(trade.price) }}</td>
+                            <td class="text-right">{{ trade.amount }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-8" data-i18n="status.noData">暂无数据</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

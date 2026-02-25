@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Crawled Data - AutoM2026{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-left">
+        <h1>Crawled Data Logs</h1>
+        <p class="text-secondary">Recent data points extracted from sources.</p>
+    </div>
+    <div class="header-right">
+        <a href="/crawler/sources" class="btn btn-secondary">
+            <span class="icon">⬅️</span> Back to Sources
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Source</th>
+                    <th>Type</th>
+                    <th>Data Date</th>
+                    <th>Value</th>
+                    <th>Crawled At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data %}
+                <tr>
+                    <td class="font-medium">{{ row.source }}</td>
+                    <td><span class="badge">{{ row.type }}</span></td>
+                    <td>{{ row.date.strftime('%Y-%m-%d') }}</td>
+                    <td class="font-mono">{{ "{:,.2f}".format(row.value) if row.value else '-' }}</td>
+                    <td class="text-secondary text-sm">{{ row.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-center text-secondary py-4">No data logs found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

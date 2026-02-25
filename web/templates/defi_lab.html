@@ -1,0 +1,545 @@
+{% extends 'base.html' %}
+
+{% block title %}DeFi 分析实验室{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/defi_lab.css') }}" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="defi-lab-container">
+  <main>
+    <header class="hero">
+      <div class="hero-badge">
+        🔴 LIVE DATA · CoinGecko + Ethereum Mainnet Oracle
+      </div>
+      <h1 class="hero-title">主流币 <span class="gradient-text">相关性与轮动分析</span></h1>
+      <p class="hero-sub">
+        发现主流币对（BTC/ETH/LST/L2）间的价格相关性与偏离机会 · 验证历史回测中最具收益的轮动策略
+      </p>
+
+      <!-- 顶部分析模式切换 -->
+      <div class="analysis-mode-tabs">
+        <button class="mode-tab active" id="tab-standard" onclick="switchContext('standard')">
+          <span class="tab-icon">🎯</span>
+          <span class="tab-text">weETH 标准套利预估</span>
+        </button>
+        <button class="mode-tab" id="tab-custom" onclick="switchContext('custom')">
+          <span class="tab-icon">⚒️</span>
+          <span class="tab-text">双币自定义轮动回测</span>
+        </button>
+      </div>
+
+      <!-- 控制面板 -->
+      <div class="control-panel">
+        <!-- 标准模式配置面板 -->
+        <div id="standardConfigPanel">
+          <!-- 1. 交易池选择 (大卡片) -->
+          <div class="cp-section">
+            <div class="cp-label">选择标的流动性池 (weETH / WETH)</div>
+            <div class="pool-grid">
+              <button class="pool-card active" id="pool-base" onclick="switchPool('base')">
+                <span class="chain-icon">🟣</span>
+                <div class="pool-meta">
+                  <span class="pool-name">Aerodrome</span>
+                  <span class="pool-chain">Base</span>
+                </div>
+              </button>
+              <button class="pool-card" id="pool-linea" onclick="switchPool('linea')">
+                <span class="chain-icon">🌀</span>
+                <div class="pool-meta">
+                  <span class="pool-name">Pancake</span>
+                  <span class="pool-chain">Linea</span>
+                </div>
+              </button>
+              <button class="pool-card" id="pool-ronin" onclick="switchPool('ronin')">
+                <span class="chain-icon">⚔️</span>
+                <div class="pool-meta">
+                  <span class="pool-name">Katana</span>
+                  <span class="pool-chain">Ronin</span>
+                </div>
+              </button>
+              <button class="pool-card" id="pool-eth_uni" onclick="switchPool('eth_uni')">
+                <span class="chain-icon">🦄</span>
+                <div class="pool-meta">
+                  <span class="pool-name">Uniswap V3</span>
+                  <span class="pool-chain">Mainnet</span>
+                </div>
+              </button>
+              <button class="pool-card" id="pool-eth_alt" onclick="switchPool('eth_alt')">
+                <span class="chain-icon">Ξ</span>
+                <div class="pool-meta">
+                  <span class="pool-name">Curve/Alt</span>
+                  <span class="pool-chain">Mainnet</span>
+                </div>
+              </button>
+            </div>
+          </div>
+          <!-- 2. 策略配置 (两列布局) -->
+          <div class="cp-row">
+            <!-- 方向控制 -->
+            <div class="cp-group">
+              <div class="cp-label">套利方向</div>
+              <div class="toggle-pill-group">
+                <button class="pill-btn active" id="dir-discount" onclick="switchDirection('discount')">
+                  📉 折价买入 (变多)
+                </button>
+                <button class="pill-btn" id="dir-premium" onclick="switchDirection('premium')">
+                  📈 溢价卖出 (变现)
+                </button>
+              </div>
+            </div>
+
+            <!-- 策略控制 -->
+            <div class="cp-group strategy-group-wrapper">
+              <div class="cp-label">持有策略</div>
+              <div class="toggle-pill-group strategy-toggle" id="strategyToggle">
+                <button class="pill-btn active" id="btnStratA" onclick="switchStrategy('A')">
+                  <span class="btn-icon">📤</span> 协议退出 (20天)
+                </button>
+                <button class="pill-btn" id="btnStratB" onclick="switchStrategy('B')">
+                  <span class="btn-icon">💧</span> LP 持有 (赚费)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom Config Panel -->
+        <div class="custom-config-panel hidden" id="customConfigPanel">
+          <div class="panel-header">
+            <h3 class="config-title">🛠️ 自定义轮动回测</h3>
+            <div class="saved-pairs-wrapper">
+              <select id="saved-pairs-select" onchange="loadSavedPair(this.value)">
+                <option value="">-- 加载已保存配置 --</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="config-grid">
+            <!-- Asset A -->
+            <div class="config-group">
+              <label>资产 A (基础资产/持有)</label>
+              <div class="input-row">
+                <select id="custom-chain-a" class="config-input">
+                  <option value="eth">Ethereum</option>
+                  <option value="base">Base</option>
+                  <option value="arbitrum">Arbitrum</option>
+                  <option value="optimism">Optimism</option>
+                  <option value="polygon_pos">Polygon</option>
+                  <option value="solana">Solana</option>
+                  <option value="binance">Binance (CEX)</option>
+                </select>
+                <input type="text" id="custom-addr-a" class="config-input" placeholder="池子地址 / Symbol (e.g. BTCUSDT)" />
+              </div>
+            </div>
+
+            <!-- Asset B -->
+            <div class="config-group">
+              <label>资产 B (对标资产/轮动)</label>
+              <div class="input-row">
+                <select id="custom-chain-b" class="config-input">
+                  <option value="eth">Ethereum</option>
+                  <option value="base">Base</option>
+                  <option value="arbitrum">Arbitrum</option>
+                  <option value="optimism">Optimism</option>
+                  <option value="polygon_pos">Polygon</option>
+                  <option value="solana">Solana</option>
+                  <option value="binance">Binance (CEX)</option>
+                </select>
+                <input type="text" id="custom-addr-b" class="config-input" placeholder="池子地址 / Symbol (e.g. BTCUSDT)" />
+              </div>
+            </div>
+
+            <!-- Date Range -->
+            <div class="config-group params-group full-width" style="margin-top: 10px;">
+              <label>回测时间段 (Date Range)</label>
+              <div class="input-row" style="gap: 10px;">
+                <input type="date" id="custom-start-date" class="config-input" style="flex:1" />
+                <span style="padding:0 5px; color: #888;">to</span>
+                <input type="date" id="custom-end-date" class="config-input" style="flex:1" />
+                <button class="helper-btn" onclick="setLast365()"
+                  style="margin-left: 10px; padding: 4px 10px; font-size: 12px; background: rgba(99,179,237,0.1); color: #63b3ed; border: none; border-radius: 4px; cursor: pointer;">Last
+                  365 Days</button>
+                <button class="helper-btn" onclick="setYTD()"
+                  style="margin-left: 5px; padding: 4px 10px; font-size: 12px; background: rgba(99,179,237,0.1); color: #63b3ed; border: none; border-radius: 4px; cursor: pointer;">YTD</button>
+              </div>
+            </div>
+
+            <!-- Strategy Mode -->
+            <div class="config-group full-width">
+              <label>策略模式</label>
+              <div class="mode-toggle">
+                <button class="mode-btn active" id="mode-sma" onclick="setCustomMode('SMA')">动态 SMA (均值回归)</button>
+                <button class="mode-btn" id="mode-fixed" onclick="setCustomMode('FIXED')">固定区间 (网格/波段)</button>
+              </div>
+            </div>
+
+            <!-- SMA Params -->
+            <div class="config-group params-group" id="params-sma">
+              <label>SMA 动态参数</label>
+              <div class="input-row">
+                <input type="number" id="custom-window" class="config-input short" placeholder="30" value="30" />
+                <span class="unit">天 SMA</span>
+                <input type="number" id="custom-stddev" class="config-input short" placeholder="2.0" value="2.0"
+                  step="0.1" />
+                <span class="unit">σ (标准差)</span>
+              </div>
+              <div class="input-row" style="margin-top: 10px;">
+                <label class="checkbox-label" style="display:flex; align-items:center; cursor:pointer;">
+                  <input type="checkbox" id="use-ema" style="margin-right:8px;" /> 使用 EMA (指数移动平均)
+                </label>
+              </div>
+            </div>
+
+            <!-- Fixed Params -->
+            <div class="config-group params-group hidden" id="params-fixed">
+              <label>固定比率参数 (Price A / Price B)</label>
+              <div class="input-row full-row">
+                <div style="display:flex; align-items:center; gap:8px; width:100%;">
+                  <input type="number" id="custom-min-ratio" class="config-input" placeholder="Low (Buy A)"
+                    step="0.000001" style="flex:1" />
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; width:100%;">
+                  <input type="number" id="custom-max-ratio" class="config-input" placeholder="High (Sell A)"
+                    step="0.000001" style="flex:1" />
+                </div>
+                <button class="helper-btn" type="button" onclick="autoFillFixedParams()">✨ 建议值</button>
+              </div>
+            </div>
+
+            <!-- Risk / Grid Params -->
+            <div class="config-group">
+              <label>资金管理 (Gradual Entry)</label>
+              <div class="input-row">
+                <input type="number" id="custom-step-size" class="config-input short" placeholder="20" value="100" />
+                <span class="unit">% 单次交易仓位</span>
+              </div>
+              <div class="input-row" style="margin-top: 10px;">
+                <label class="checkbox-label" style="display:flex; align-items:center; cursor:pointer;">
+                  <input type="checkbox" id="no-loss-sell" style="margin-right:8px;" /> 🛡️ 不赔钱卖 (不限亏损平仓)
+                </label>
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button class="save-btn" onclick="saveCurrentPair()">💾 保存配置</button>
+              <button class="run-btn" onclick="runCustomBacktest()">▶ 开始回测</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+</div>
+</header>
+
+<!-- 策略说明横幅 -->
+<div class="strategy-banner" id="strategyBanner">
+  <div class="strat-info-a" id="stratInfoA">
+    <span class="strat-badge a">策略 A</span>
+    <strong>协议退出（20天）</strong>
+    <span>买入折价 weETH → 固定持有 20 天（含 7天赎回期 + 跨链 + 滑点延迟）→
+      以 oracle fair value 退出</span>
+    <span class="formula-inline">APR = (oracle<sub>20d</sub> − DEX<sub>buy</sub>) / DEX<sub>buy</sub>
+      / 20 × 365</span>
+  </div>
+  <div class="strat-info-b hidden" id="stratInfoB">
+    <span class="strat-badge b">策略 B</span>
+    <strong>LP 持有（等价格回归）</strong>
+    <span>买入折价 weETH → 加入 Aerodrome LP 赚手续费 → 等 DEX 价格回归
+      oracle 后退出</span>
+    <span class="formula-inline">APR = (套利差价 + LP手续费收入) / 持有天数 × 365　|　LP费率 ≈
+      <span id="lpFeeDisplay">6%</span>/年</span>
+  </div>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar" id="statusBar">
+  <div class="status-dot pulsing"></div>
+  <span id="statusText">正在加载数据…</span>
+</div>
+
+<!-- KPI Cards -->
+<section class="kpi-grid" id="kpiGrid">
+  <div class="kpi-card" id="kpi-ratio">
+    <div class="kpi-label">当前 weETH/ETH 比率</div>
+    <div class="kpi-value" id="kpi-ratio-val">—</div>
+    <div class="kpi-sub" id="kpi-ratio-sub">链上 oracle 估算中…</div>
+  </div>
+  <div class="kpi-card highlight" id="kpi-arb">
+    <div class="kpi-label" id="kpi-arb-label">📊 历史平均套利年化</div>
+    <div class="kpi-value green" id="kpi-arb-val">—</div>
+    <div class="kpi-sub" id="kpi-arb-sub">基于历史套利事件</div>
+  </div>
+  <div class="kpi-card" id="kpi-events">
+    <div class="kpi-label">套利事件次数</div>
+    <div class="kpi-value" id="kpi-events-val">—</div>
+    <div class="kpi-sub" id="kpi-events-sub">折价 &gt; 20bps 已回归</div>
+  </div>
+  <div class="kpi-card" id="kpi-best">
+    <div class="kpi-label">🏆 最佳单次年化</div>
+    <div class="kpi-value orange" id="kpi-best-val">—</div>
+    <div class="kpi-sub" id="kpi-best-sub">最大折价 + 最短持有</div>
+  </div>
+  <div class="kpi-card" id="kpi-staking">
+    <div class="kpi-label" id="kpi-staking-label">📈 底层质押 APY</div>
+    <div class="kpi-value" id="kpi-staking-val">~3.8%</div>
+    <div class="kpi-sub" id="kpi-staking-sub">
+      ether.fi staking + restaking
+    </div>
+  </div>
+  <div class="kpi-card" id="kpi-total">
+    <div class="kpi-label">💎 综合年化</div>
+    <div class="kpi-value purple" id="kpi-total-val">—</div>
+    <div class="kpi-sub" id="kpi-total-sub">套利 + 底层质押</div>
+  </div>
+</section>
+
+<!-- Charts -->
+<section class="charts-grid">
+  <div class="chart-card wide">
+    <div class="chart-header">
+      <h2 class="chart-title" id="ratioChartTitle">币对价格比率分析 (Pair Ratio Analysis)</h2>
+      <div class="chart-legend">
+        <span class="legend-item" id="legendDexPrice"><span class="legend-dot blue"></span>DEX 价格</span>
+        <span class="legend-item" id="legendOracleFV"><span class="legend-dot yellow"></span>Oracle Fair Value</span>
+        <span class="legend-item" id="legendBuyThreshold"><span class="legend-dot red"></span>买入阈值 (-20bps)</span>
+        <span class="legend-item hidden" id="legendSellThreshold"><span class="legend-dot purple"></span>卖出线 (Sell
+          Zone)</span>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="ratioChart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-header">
+      <h2 class="chart-title" id="discountChartTitle">价格偏离度分布 (Deviation Distribution)</h2>
+      <div class="chart-legend">
+        <span class="legend-item" id="legendDiscount"><span class="legend-dot green"></span>折价幅度 (bps)</span>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="discountChart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-header">
+      <h2 class="chart-title" id="arbChartTitle">历次交易事件年化收益</h2>
+      <div class="chart-legend">
+        <span class="legend-item" id="legendArbAPR"><span class="legend-dot orange"></span>单次年化 APR%</span>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="arbChart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-header">
+      <h2 class="chart-title">持仓分布 (Holding Position)</h2>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-dot green"></span>Asset A %</span>
+        <span class="legend-item"><span class="legend-dot gray"></span>Asset B %</span>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="posChart"></canvas></div>
+  </div>
+
+  <div class="cp-row" id="priceChartsRow">
+    <div class="chart-card">
+      <div class="chart-header">
+        <h2 class="chart-title" id="priceChartATitle">Asset A Price (USD)</h2>
+      </div>
+      <div class="chart-wrap"><canvas id="priceChartA"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <h2 class="chart-title" id="priceChartBTitle">Asset B Price (USD)</h2>
+      </div>
+      <div class="chart-wrap"><canvas id="priceChartB"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-card wide">
+    <div class="chart-header">
+      <h2 class="chart-title" id="cumulChartTitle">累计轮动/套利收益曲线</h2>
+      <div class="chart-legend">
+        <span class="legend-item" id="legendCumulReturn"><span class="legend-dot teal"></span>累计收益 (ETH)</span>
+        <span class="legend-item strat-b-only hidden" id="feeReturnLegend">
+          <span class="legend-dot purple"></span>其中：LP 手续费
+        </span>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="cumulChart"></canvas></div>
+  </div>
+</section>
+
+<!-- 策略对比面板 -->
+<section class="compare-section">
+  <h2 class="section-title">⚔️ 两种策略对比</h2>
+  <div class="compare-grid">
+    <div class="compare-card">
+      <div class="compare-header a">
+        <span class="strat-badge a">策略 A</span>
+        <span>协议退出 · 20天固定</span>
+      </div>
+      <ul class="compare-list">
+        <li>✅ 风险明确，收益锁定</li>
+        <li>✅ 不依赖 DEX 流动性</li>
+        <li>✅ 不受无常损失影响</li>
+        <li>⚠️ 7天赎回锁定期（含桥接）</li>
+        <li>⚠️ 固定退出，无法捕获更大折价</li>
+        <li>📐 APR = 折价 / 20天 × 365</li>
+      </ul>
+    </div>
+    <div class="compare-card">
+      <div class="compare-header b">
+        <span class="strat-badge b">策略 B</span>
+        <span>LP 持有 · 等价格回归</span>
+      </div>
+      <ul class="compare-list">
+        <li>✅ 持有期间持续赚取 LP 手续费</li>
+        <li>✅ 价格回归时额外获得套利收益</li>
+        <li>✅ 无需赎回等待，灵活退出</li>
+        <li>⚠️ 需承担 LP 头寸的无常损失风险</li>
+        <li>⚠️ 若长期不回归则手续费成主要收益</li>
+        <li>📐 APR = (套利+LP费) / 实际天数 × 365</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- Events Table -->
+<section class="table-section">
+  <h2 class="section-title">📋 历次轮动交易详情</h2>
+  <div class="table-wrap">
+    <table id="eventsTable">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>DEX 比率</th>
+          <th>Oracle FV</th>
+          <th>折价 (bps)</th>
+          <th>Amount (Unit)</th>
+          <th id="th-pos">Position (A / B)</th>
+          <th id="th-duration">持有天数</th>
+          <th id="th-arb">套利收益</th>
+          <th id="th-fee" class="strat-b-only hidden">LP手续费</th>
+          <th>综合年化</th>
+          <th>评级</th>
+        </tr>
+      </thead>
+      <tbody id="eventsBody">
+        <tr>
+          <td colspan="9" class="loading-row">正在计算…</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Strategy Cards -->
+<section class="strategy-section" id="defaultStrategySection">
+  <h2 class="section-title">📊 策略概览</h2>
+  <div class="strategy-grid">
+    <div class="strategy-card active" onclick="switchStrategy('A')">
+      <span class="strategy-num">A</span>
+      <h3>策略 A：协议退出 (20天)</h3>
+      <p>
+        利用 weETH 官方取款机制，在
+        <strong>20天</strong>
+        (含7天跨链+处理) 后按合约公允价值退出。
+      </p>
+      <div class="formula">
+        利润 = (FV - Cost) × 数量
+      </div>
+    </div>
+    <div class="strategy-card" onclick="switchStrategy('B')">
+      <span class="strategy-num">B</span>
+      <h3>策略 B：LP 持有 (赚费)</h3>
+      <p>
+        在 Aerodrome 组 weETH/WETH
+        <strong>CL200</strong> 流动性，等待价格回归同时赚取交易费。
+      </p>
+      <div class="formula">
+        利润 = (DEX差价 + LP费) × 数量
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Custom Strategy Info (Hidden by default) -->
+<section class="strategy-section hidden" id="customStrategySection">
+  <h2 class="section-title">📊 轮动策略概览 (Rotation)</h2>
+  <div class="strategy-card wide-card">
+    <span class="strategy-num">R</span>
+    <h3 id="customStratTitle">双币轮动策略</h3>
+    <p id="customStratDesc">
+      在两个相关性较高的资产间进行轮动。当比率低于均值 - N倍标准差时买入 A，高于均值 + N倍标准差时卖出 A (买入 B)。
+    </p>
+    <div class="formula" id="customStratFormula">
+      Signals: Buy A if Ratio < SMA - 2σ | Sell A if Ratio> SMA + 2σ
+    </div>
+  </div>
+</section>
+
+<!-- Risk Section -->
+<section class="risk-section">
+  <h2 class="section-title">⚠️ 风险提示</h2>
+  <div class="risk-grid">
+    <div class="risk-item">
+      <span class="risk-icon">🔐</span>
+      <div>
+        <strong>智能合约风险</strong>
+        <p>
+          ether.fi 协议或 Aerodrome 合约存在漏洞风险，历史未发生但不可排除
+        </p>
+      </div>
+    </div>
+    <div class="risk-item">
+      <span class="risk-icon">📉</span>
+      <div>
+        <strong>持续脱锚风险</strong>
+        <p>
+          极少数情况（如 ether.fi 出现系统性风险），脱锚可能持续无法回归
+        </p>
+      </div>
+    </div>
+    <div class="risk-item">
+      <span class="risk-icon">🌊</span>
+      <div>
+        <strong>无常损失（策略 B）</strong>
+        <p>
+          在 LP 中持有期间，若 weETH
+          大幅下跌，可能遭受无常损失大于手续费收益
+        </p>
+      </div>
+    </div>
+    <div class="risk-item">
+      <span class="risk-icon">🏦</span>
+      <div>
+        <strong>机会成本</strong>
+        <p>
+          资金锁定期间无法参与其他收益机会，需与持有 stETH、rETH 等对比
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <p>
+    数据来源：CoinGecko API · Ethereum Mainnet Oracle · 当前时间：<span id="currentTime"></span>
+  </p>
+  <p class="disclaimer">
+    本分析仅供学习研究，不构成投资建议。DeFi
+    存在极高风险，请充分了解后谨慎操作。
+  </p>
+</footer>
+</main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', path='js/defi_lab/defi_main.js') }}"></script>
+{% endblock %}

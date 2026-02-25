@@ -1,0 +1,654 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script>
+    // Prepare execution logs data robustly
+    const STRATEGY_EXECUTIONS = {
+        {% if executions %}
+            {% for exec in executions %}
+            "{{ exec.id }}": {{ exec.process_logs | tojson | default('[]') | safe }},
+            {% endfor %}
+        {% endif %}
+    };
+</script>
+
+<div class="space-y-6" x-data="{ showModal: false, activeLog: null, logs: STRATEGY_EXECUTIONS }">
+
+    <!-- Header -->
+    <div class="flex justify-between items-center bg-base-100 p-6 rounded-lg shadow">
+        <div>
+            <div class="flex items-center gap-2 mb-1">
+                <a href="/strategies" class="btn btn-circle btn-ghost btn-sm">
+                    <i class="ph-bold ph-arrow-left"></i>
+                </a>
+                <h1 class="text-2xl font-bold">{{ strategy.name }}</h1>
+                <span class="badge {{ 'badge-success' if strategy.status == 'active' else 'badge-ghost' }}">
+                    {{ strategy.status }}
+                </span>
+                <span class="badge badge-outline">{{ strategy.type }}</span>
+            </div>
+            <div class="flex items-center gap-4 text-sm opacity-70 mt-1">
+                <div class="flex items-center gap-1">
+                    <span data-i18n="strategy.symbol">Symbol</span>: <span class="font-mono">{{ strategy.symbol }}</span>
+                </div>
+                <div class="w-px h-3 bg-base-content/20"></div>
+                <div class="flex items-center gap-1">
+                    <span data-i18n="strategy.totalTrades">Total Trades</span>: <span class="font-mono">{{ strategy.total_trades }}</span>
+                </div>
+                <div class="w-px h-3 bg-base-content/20"></div>
+                <div class="flex items-center gap-1">
+                    <span data-i18n="strategy.interval">Interval</span>: <span class="font-mono">{{ strategy.schedule_minutes }} min</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex gap-2">
+            <a href="/strategies/{{ strategy.id }}/edit" class="btn btn-ghost btn-sm">
+                <i class="ph-bold ph-pencil-simple"></i>
+                <span data-i18n="action.edit">Edit</span>
+            </a>
+            <button type="button" class="btn btn-primary btn-sm" id="runNowBtn" onclick="runStrategyNow()">
+                <i class="ph-bold ph-play"></i> 
+                <span data-i18n="strategy.runNow">Run Now</span>
+            </button>
+            
+            <script>
+                async function runStrategyNow() {
+                    const btn = document.getElementById('runNowBtn');
+                    const originalContent = btn.innerHTML;
+                    
+                    // Disable button and show loading
+                    btn.disabled = true;
+                    btn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:0.5rem;"><span style="width:1rem;height:1rem;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span></span>';
+                    
+                    try {
+                        const response = await fetch('/strategies/{{ strategy.id }}/run', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            
+                            // Show toast
+                            showToast('策略执行任务已创建，正在运行中...', 'success');
+                            
+                            // Add running row to execution table
+                            addRunningRow();
+                            
+                            // Re-enable button
+                            btn.disabled = false;
+                            btn.innerHTML = originalContent;
+                        } else {
+                            throw new Error('Failed to start strategy');
+                        }
+                    } catch (err) {
+                        console.error('Error:', err);
+                        showToast('启动策略失败: ' + err.message, 'error');
+                        btn.disabled = false;
+                        btn.innerHTML = originalContent;
+                    }
+                }
+                
+                function showToast(message, type = 'info') {
+                    // Create toast element
+                    const toast = document.createElement('div');
+                    toast.style.cssText = `
+                        position: fixed;
+                        bottom: 2rem;
+                        right: 2rem;
+                        padding: 1rem 1.5rem;
+                        background: ${type === 'success' ? 'rgba(16, 185, 129, 0.95)' : type === 'error' ? 'rgba(239, 68, 68, 0.95)' : 'rgba(59, 130, 246, 0.95)'};
+                        color: white;
+                        border-radius: 0.5rem;
+                        font-size: 0.875rem;
+                        font-weight: 500;
+                        z-index: 10000;
+                        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+                        animation: slideIn 0.3s ease;
+                    `;
+                    toast.textContent = message;
+                    document.body.appendChild(toast);
+                    
+                    // Remove after 4 seconds
+                    setTimeout(() => {
+                        toast.style.animation = 'fadeOut 0.3s ease';
+                        setTimeout(() => toast.remove(), 300);
+                    }, 4000);
+                }
+                
+                function addRunningRow() {
+                    const tbody = document.querySelector('table tbody');
+                    if (!tbody) return;
+                    
+                    const now = new Date();
+                    const timeStr = now.toLocaleString('zh-CN', { 
+                        month: '2-digit', 
+                        day: '2-digit', 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        second: '2-digit' 
+                    });
+                    
+                    const row = document.createElement('tr');
+                    row.id = 'running-row';
+                    row.style.background = 'rgba(59, 130, 246, 0.1)';
+                    row.innerHTML = `
+                        <td class="whitespace-nowrap font-mono text-sm">${timeStr}</td>
+                        <td><span class="badge badge-blue badge-sm" style="animation: pulse 1.5s infinite;">运行中...</span></td>
+                        <td class="font-mono">-</td>
+                        <td class="opacity-50">等待执行完成</td>
+                        <td><span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--muted-foreground);"><span style="width:0.75rem;height:0.75rem;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span></span></td>
+                    `;
+                    
+                    // Insert at top
+                    tbody.insertBefore(row, tbody.firstChild);
+                }
+            </script>
+            
+            <style>
+                @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+                @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+                @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+            </style>
+            
+            {% if strategy.status == 'active' %}
+            <form action="/strategies/{{ strategy.id }}/toggle" method="post">
+                <button type="submit" class="btn btn-warning btn-sm" data-i18n="action.pause">Pause</button>
+            </form>
+            {% else %}
+            <form action="/strategies/{{ strategy.id }}/toggle" method="post">
+                <button type="submit" class="btn btn-success btn-sm" data-i18n="action.start">Start</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Score Trend Chart -->
+    <!-- Score Trend Chart (Thinking Strategies) -->
+    {% if strategy.type in ['macro', 'ta'] %}
+    
+    <!-- Load Chart.js and define functions BEFORE Alpine evaluates -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+        // Prepare score data from executions
+        const SCORE_DATA = [
+            {% for exec in executions %}
+            {
+                timestamp: new Date("{{ exec.executed_at.isoformat() }}").getTime(),
+                score: {{ exec.conviction_score if exec.conviction_score is not none else 'null' }},
+                signal: "{{ exec.signal }}"
+            },
+            {% endfor %}
+        ].filter(d => d.score !== null).reverse(); // Oldest first for chart
+        
+        let scoreChart = null;
+        
+        function filterByRange(data, range) {
+            const now = Date.now();
+            const ranges = {
+                '24h': 24 * 60 * 60 * 1000,
+                '30d': 30 * 24 * 60 * 60 * 1000,
+                '90d': 90 * 24 * 60 * 60 * 1000
+            };
+            const cutoff = now - ranges[range];
+            return data.filter(d => d.timestamp >= cutoff);
+        }
+        
+        function formatTime(timestamp, range) {
+            const date = new Date(timestamp);
+            if (range === '24h') {
+                return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            } else {
+                return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+            }
+        }
+        
+        function initScoreChart(range = '24h') {
+            const ctx = document.getElementById('scoreChart');
+            if (!ctx) return;
+            
+            const filtered = filterByRange(SCORE_DATA, range);
+            
+            if (filtered.length === 0) {
+                ctx.parentElement.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted-foreground);">
+                        <div style="text-align: center;">
+                            <i class="ph-bold ph-chart-line-up" style="font-size: 2.5rem; opacity: 0.3;"></i>
+                            <div style="margin-top: 0.5rem; font-size: 0.875rem;">暂无评分数据</div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const labels = filtered.map(d => formatTime(d.timestamp, range));
+            const scores = filtered.map(d => d.score);
+            const colors = filtered.map(d => {
+                if (d.signal === 'buy') return '#10b981';
+                if (d.signal === 'sell') return '#ef4444';
+                return '#94a3b8';
+            });
+            
+            scoreChart = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Score',
+                        data: scores,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointBackgroundColor: colors,
+                        pointBorderColor: colors,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            titleColor: '#f8fafc',
+                            bodyColor: '#94a3b8',
+                            padding: 10,
+                            callbacks: {
+                                label: (ctx) => `Score: ${ctx.parsed.y.toFixed(1)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#64748b', maxTicksLimit: 8, font: { size: 10 } }
+                        },
+                        y: {
+                            min: -100,
+                            max: 100,
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#64748b', font: { size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+        
+        window.updateScoreChart = function(range) {
+            if (scoreChart) {
+                scoreChart.destroy();
+                scoreChart = null;
+            }
+            // Recreate canvas
+            const container = document.querySelector('#scoreChart')?.parentElement;
+            if (container) {
+                container.innerHTML = '<canvas id="scoreChart"></canvas>';
+            }
+            initScoreChart(range);
+        };
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => initScoreChart('24h'));
+    </script>
+    
+    <div class="card bg-base-100 shadow" 
+         x-data="{ 
+             scoreRange: '24h',
+             updateChart(range) {
+                 this.scoreRange = range;
+                 if (window.updateScoreChart) {
+                     window.updateScoreChart(range);
+                 }
+             }
+         }">
+        <div class="card-body">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="card-title text-lg flex items-center gap-2">
+                    <i class="ph-bold ph-chart-line"></i>
+                    <span class="show-zh-only">评分趋势</span>
+                    <span class="show-en-only">Score Trend</span>
+                </h2>
+                
+                <!-- Time Range Selector -->
+                <div style="display: flex; gap: 0.25rem; background: rgba(255,255,255,0.05); padding: 0.25rem; border-radius: 0.375rem;">
+                    <button @click="updateChart('24h')" 
+                            :style="scoreRange === '24h' ? 'background: var(--primary); color: white;' : 'color: var(--muted-foreground);'"
+                            style="padding: 0.375rem 0.75rem; border: none; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500; cursor: pointer;">24H</button>
+                    <button @click="updateChart('30d')" 
+                            :style="scoreRange === '30d' ? 'background: var(--primary); color: white;' : 'color: var(--muted-foreground);'"
+                            style="padding: 0.375rem 0.75rem; border: none; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500; cursor: pointer;">30D</button>
+                    <button @click="updateChart('90d')" 
+                            :style="scoreRange === '90d' ? 'background: var(--primary); color: white;' : 'color: var(--muted-foreground);'"
+                            style="padding: 0.375rem 0.75rem; border: none; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500; cursor: pointer;">90D</button>
+                </div>
+            </div>
+            
+            <div style="height: 200px; position: relative;">
+                <canvas id="scoreChart"></canvas>
+            </div>
+        </div>
+    </div>
+    {% elif strategy.type == 'grid' %}
+    
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body">
+            <h2 class="card-title text-lg flex items-center gap-2 mb-4">
+                <i class="ph-bold ph-grid-four"></i>
+                <span data-i18n="strategy.grid.status">Grid Status</span>
+            </h2>
+            
+            {% if grid_status %}
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <!-- Current Price -->
+                <div class="stat bg-base-200 rounded-box py-2">
+                    <div class="stat-title text-xs" data-i18n="market.price">Current Price</div>
+                    <div class="stat-value text-lg text-primary">${{ "%.2f"|format(grid_status.current_price) }}</div>
+                    <div class="stat-desc">Range: ${{ "%.0f"|format(grid_status.grids[0].buy_price) }} - ${{ "%.0f"|format(grid_status.grids[-1].sell_price) }}</div>
+                </div>
+                
+                <!-- Grid Level -->
+                <div class="stat bg-base-200 rounded-box py-2">
+                    <div class="stat-title text-xs" data-i18n="strategy.grid.level">Grid Level</div>
+                    <div class="stat-value text-lg">{{ grid_status.current_level }} <span class="text-sm opacity-50">/ {{ grid_status.total_grids }}</span></div>
+                    <div class="stat-desc">Invest/Grid: ${{ "%.0f"|format(grid_status.investment_per_grid) }}</div>
+                </div>
+                
+                <!-- Stats Placeholder (Future) -->
+                <div class="stat bg-base-200 rounded-box py-2">
+                    <div class="stat-title text-xs" data-i18n="strategy.grid.arbitrage">Arbitrage Stats</div>
+                    <div class="stat-value text-lg text-secondary">--</div>
+                    <div class="stat-desc">Realized PnL: --</div>
+                </div>
+            </div>
+            
+            <!-- Grid Visualizer - Price Ladder -->
+            <div class="border border-base-300 rounded-lg bg-base-200/50 overflow-hidden">
+                <div class="flex flex-col">
+                    {% for grid in grid_status.grids|reverse %}
+                    
+                        <!-- Grid Line (Upper Bound of this interval) -->
+                        <div class="flex items-center px-4 py-1 border-b border-base-content/10 bg-base-100/50 text-xs font-mono text-base-content/60">
+                            <span class="w-16 text-right mr-4">${{ "%.2f"|format(grid.sell_price) }}</span>
+                            <div class="flex-1 h-px bg-base-content/10 relative">
+                                {% if grid.status == 'active' %}
+                                    <span class="absolute right-0 bottom-0 mb-1 text-error text-[10px] font-bold tracking-wider">NEXT SELL</span>
+                                {% endif %}
+                            </div>
+                            <span class="w-8 text-right ml-2 opacity-30">L{{ grid.level }}</span>
+                        </div>
+                        
+                        <!-- Grid Zone (The interval itself) -->
+                        <div class="py-3 px-4 flex items-center relative transition-colors duration-300
+                                    {% if grid.status == 'active' %}bg-primary/10{% endif %}">
+                            
+                            <!-- Left: Status/Action -->
+                            <div class="w-16 text-right mr-4">
+                                {% if grid.status == 'active' %}
+                                    <span class="badge badge-primary badge-xs animate-pulse">ACTIVE</span>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Center: Visual Bar -->
+                            <div class="flex-1 border-l-2 border-dashed border-base-content/10 pl-4 h-full min-h-[1.5rem] flex items-center">
+                                {% if grid.status == 'active' %}
+                                    <!-- Current Price Indicator -->
+                                    <div class="flex items-center gap-2 w-full">
+                                        <div class="h-0.5 flex-1 bg-primary/30 relative">
+                                            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-primary shadow-sm shadow-primary"></div>
+                                        </div>
+                                        <span class="text-primary font-bold font-mono text-sm">${{ "%.2f"|format(grid_status.current_price) }}</span>
+                                    </div>
+                                {% else %}
+                                    <!-- Empty zone placeholder -->
+                                    <span class="text-[10px] opacity-20 font-mono tracking-widest uppercase">
+                                        {% if grid.level > grid_status.current_level %}WAITING SELL{% else %}WAITING BUY{% endif %}
+                                    </span>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Right: Investment info (Optional placeholder) -->
+                            <div class="w-8 text-right ml-2"></div>
+                        </div>
+                        
+                        <!-- For the very last item (lowest level), show the bottom line -->
+                        {% if loop.last %}
+                        <div class="flex items-center px-4 py-1 border-t border-base-content/10 bg-base-100/50 text-xs font-mono text-base-content/60">
+                            <span class="w-16 text-right mr-4">${{ "%.2f"|format(grid.buy_price) }}</span>
+                            <div class="flex-1 h-px bg-base-content/10 relative">
+                                {% if grid.status == 'active' %}
+                                    <span class="absolute right-0 top-0 mt-1 text-success text-[10px] font-bold tracking-wider">NEXT BUY</span>
+                                {% endif %}
+                            </div>
+                            <span class="w-8 text-right ml-2 opacity-30">BASE</span>
+                        </div>
+                        {% endif %}
+                        
+                    {% endfor %}
+                </div>
+            </div>
+            
+            {% else %}
+            <div class="alert alert-warning">
+                <i class="ph-bold ph-warning"></i>
+                <span>Grid status not available. Ensure strategy is active or configured correctly.</span>
+                <br>
+                <span class="text-xs opacity-70">Note: Grid dashboard requires live price data.</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    {% endif %}
+
+    <!-- Execution History -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body">
+            <h2 class="card-title text-lg mb-4 flex items-center gap-2">
+                <i class="ph-bold ph-scroll"></i>
+                <span data-i18n="strategy.detail.logs">Execution Logs</span>
+            </h2>
+            
+            <div class="overflow-x-auto">
+                <table class="table table-zebra w-full">
+                    <thead>
+                        <tr>
+                            <th data-i18n="trade.time">Time</th>
+                            <th data-i18n="trade.side">Signal</th>
+                            <th data-i18n="strategy.score">Score</th>
+                            <th data-i18n="trade.reason">Reason</th>
+                            <th data-i18n="strategy.actions">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if executions %}
+                            {% for exec in executions %}
+                            <tr class="hover">
+                                <td class="whitespace-nowrap font-mono text-sm">
+                                    {{ exec.executed_at.strftime('%m-%d %H:%M:%S') }}
+                                </td>
+                                <td>
+                                    {% if exec.signal == 'buy' %}
+                                        <span class="badge badge-success badge-sm" data-i18n="side.buy">BUY</span>
+                                    {% elif exec.signal == 'sell' %}
+                                        <span class="badge badge-error badge-sm" data-i18n="side.sell">SELL</span>
+                                    {% else %}
+                                        <span class="badge badge-ghost badge-sm" data-i18n="side.hold">HOLD</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="radial-progress text-primary text-xs" 
+                                         style="--value:{{ exec.conviction_score }}; --size:2rem;">
+                                        {{ exec.conviction_score|int }}
+                                    </div>
+                                </td>
+                                <td class="max-w-md truncate" title="{{ exec.reason }}">
+                                    {{ exec.reason }}
+                                </td>
+                                <td>
+                                    <button class="btn btn-xs btn-outline" 
+                                            @click="activeLog = logs['{{ exec.id }}']; showModal = true">
+                                        <span data-i18n="strategy.viewDetails">View Details</span>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center py-8 opacity-50">
+                                    <span data-i18n="strategy.noLogs">No execution history found.</span>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Detail Modal with Overlay -->
+    <div class="modal-overlay" :class="{ 'open': showModal }" x-show="showModal" x-transition.opacity>
+        <div class="modal" style="max-width: 1200px; width: 95%;" @click.outside="showModal = false">
+            <div class="modal-header">
+                <h3 class="modal-title" data-i18n="strategy.detail.process">Execution Process Details</h3>
+                <button class="btn btn-ghost btn-sm" @click="showModal = false">
+                    <i class="ph-bold ph-x"></i>
+                </button>
+            </div>
+            
+            <div class="modal-body" style="max-height: 80vh; overflow-y: auto; padding: 0;">
+                <template x-if="activeLog && activeLog.length > 0">
+                    <table class="table table-compact w-full table-fixed">
+                        <thead class="bg-base-200 sticky top-0 z-10">
+                            <tr>
+                                <th width="100" data-i18n="log.timestamp">Time</th>
+                                <th width="120" data-i18n="strategy.type">Type</th>
+                                <th width="200" data-i18n="strategy.process.step">Step</th>
+                                <th data-i18n="strategy.process.details">Details</th>
+                                <th width="150" class="text-right" data-i18n="strategy.process.output">Output</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="(item, index) in activeLog" :key="index">
+                                <tr class="hover group align-top border-b border-base-200">
+                                    <td class="font-mono text-xs opacity-60 whitespace-nowrap pt-3">
+                                        <span x-text="item.timestamp || '--:--:--'"></span>
+                                    </td>
+                                    <td class="pt-3">
+                                        <template x-if="item.type === 'api_call'">
+                                            <span class="badge badge-sm badge-info gap-1">
+                                                <i class="ph-bold ph-globe"></i> <span data-i18n="log.type.api_call">API</span>
+                                            </span>
+                                        </template>
+                                        <template x-if="item.type === 'llm_call'">
+                                            <span class="badge badge-sm badge-secondary gap-1">
+                                                <i class="ph-bold ph-brain"></i> <span data-i18n="log.type.llm_call">LLM</span>
+                                            </span>
+                                        </template>
+                                        <template x-if="item.type === 'calculation'">
+                                            <span class="badge badge-sm badge-ghost gap-1">
+                                                <i class="ph-bold ph-calculator"></i> <span data-i18n="log.type.calculation">Calc</span>
+                                            </span>
+                                        </template>
+                                    </td>
+                                    <td class="font-medium text-sm pt-3 break-words">
+                                        <div x-text="item.step"></div>
+                                    </td>
+                                    <td class="pt-3 pb-3 whitespace-normal break-words">
+                                        <div class="text-sm opacity-80" x-text="item.details"></div>
+                                        
+                                        <!-- Expandable LLM Data -->
+                                        <template x-if="item.data">
+                                            <div x-data="{ expanded: false }" class="mt-2">
+                                                <button class="btn btn-xs btn-outline btn-ghost gap-1" @click="expanded = !expanded">
+                                                    <i class="ph-bold" :class="expanded ? 'ph-caret-up' : 'ph-caret-down'"></i>
+                                                    <span x-text="expanded ? t('log.collapseAll') : t('log.showMore')">Details</span>
+                                                </button>
+                                                
+                                                <div x-show="expanded" x-transition class="mt-2 space-y-3 bg-base-200/50 p-3 rounded-lg border border-base-300">
+                                                    <!-- Prompt -->
+                                                    <template x-if="item.data.prompt">
+                                                        <div>
+                                                            <div class="text-xs font-bold mb-1 text-accent flex items-center gap-1">
+                                                                <i class="ph-bold ph-chat-circle-dots"></i>
+                                                                <span data-i18n="log.llm.prompt">Prompt</span>
+                                                            </div>
+                                                            <pre class="text-xs bg-base-100 p-2 rounded border border-base-300 font-mono max-h-60 overflow-y-auto" style="white-space: pre-wrap; word-break: break-all;" x-text="item.data.prompt"></pre>
+                                                        </div>
+                                                    </template>
+                                                    
+                                                    <!-- Response -->
+                                                    <template x-if="item.data.response">
+                                                        <div>
+                                                            <div class="text-xs font-bold mb-1 text-success flex items-center gap-1">
+                                                                <i class="ph-bold ph-robot"></i>
+                                                                <span data-i18n="log.llm.response">Response</span>
+                                                            </div>
+                                                            <pre class="text-xs bg-base-100 p-2 rounded border border-base-300 font-mono max-h-60 overflow-y-auto" style="white-space: pre-wrap; word-break: break-all;" x-text="item.data.response"></pre>
+                                                        </div>
+                                                    </template>
+
+                                                    <!-- Raw JSON -->
+                                                    <template x-if="item.data.raw_json">
+                                                        <div>
+                                                            <div class="text-xs font-bold mb-1 text-base-content/50 flex items-center gap-1">
+                                                                <i class="ph-bold ph-code"></i>
+                                                                <span data-i18n="log.llm.raw">Raw JSON</span>
+                                                            </div>
+                                                            <pre class="text-xs bg-base-300/50 p-2 rounded border border-base-300 font-mono max-h-60 overflow-y-auto opacity-70" style="white-space: pre-wrap; word-break: break-all;" x-text="item.data.raw_json"></pre>
+                                                        </div>
+                                                    </template>
+                                                    
+                                                    <!-- Key Factors -->
+                                                    <template x-if="item.data.key_factors && item.data.key_factors.length > 0">
+                                                        <div>
+                                                            <div class="text-xs font-bold mb-1 text-warning" data-i18n="log.keyFactors">Key Factors</div>
+                                                            <div class="bg-base-100 p-2 rounded border border-base-300">
+                                                                <ul class="list-disc list-inside text-xs space-y-1">
+                                                                    <template x-for="factor in item.data.key_factors">
+                                                                        <li x-text="factor"></li>
+                                                                    </template>
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                    
+                                                    <!-- Risk Assessment -->
+                                                    <template x-if="item.data.risk_assessment">
+                                                        <div>
+                                                            <div class="text-xs font-bold mb-1 text-error" data-i18n="log.riskAssessment">Risk Assessment</div>
+                                                            <div class="bg-base-100 p-2 rounded border border-base-300 text-xs text-error/80" x-text="item.data.risk_assessment"></div>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </td>
+                                    <td class="text-right pt-3">
+                                        <span class="badge badge-outline badge-sm font-mono" x-text="item.output"></span>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </template>
+                <template x-if="!activeLog || activeLog.length === 0">
+                    <div class="flex flex-col items-center justify-center py-12 opacity-50">
+                        <i class="ph-bold ph-clipboard-text text-4xl mb-2"></i>
+                        <span data-i18n="strategy.noDetails">No detailed logs available</span>
+                    </div>
+                </template>
+            </div>
+            
+            <div class="modal-footer border-t border-base-200">
+                <button class="btn btn-outline btn-sm" @click="showModal = false" data-i18n="action.close">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

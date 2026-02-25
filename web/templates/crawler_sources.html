@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}Crawler Sources - AutoM2026{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* Native Dialog overrides to match .modal class without overlay wrapper */
+    dialog.modal {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(1);
+        margin: 0;
+        padding: 0;
+        z-index: 1000;
+        background-color: var(--card);
+        color: var(--card-foreground);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+    }
+    dialog::backdrop {
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+    }
+    /* Fix table actions spacing */
+    .btn-group {
+        display: flex;
+        gap: 0.25rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-left">
+        <h1>Data Crawler Sources</h1>
+        <p class="text-secondary">Manage external data sources for periodic crawling.</p>
+    </div>
+    <div class="header-right">
+        <a href="/crawler/data" class="btn btn-secondary">
+            <span class="icon">📊</span> View Data
+        </a>
+        <button class="btn btn-primary" onclick="document.getElementById('addSourceModal').showModal()">
+            <span class="icon">➕</span> Add Source
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>URL</th>
+                    <th>Spider Type</th>
+                    <th>Interval (min)</th>
+                    <th>Last Run</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for source in sources %}
+                <tr>
+                    <td>{{ source.id }}</td>
+                    <td class="font-medium">{{ source.name }}</td>
+                    <td>
+                        <a href="{{ source.url }}" target="_blank" class="text-link truncate" style="max-width: 200px; display: inline-block;">
+                            {{ source.url }}
+                        </a>
+                    </td>
+                    <td><span class="badge">{{ source.spider_type }}</span></td>
+                    <td>{{ source.schedule_interval }}</td>
+                    <td>
+                        {% if source.last_run_at %}
+                        {{ source.last_run_at.strftime('%Y-%m-%d %H:%M') }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if source.is_active %}
+                        <span class="badge badge-success">Active</span>
+                        {% else %}
+                        <span class="badge badge-error">Paused</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group">
+                            <form action="/crawler/sources/{{ source.id }}/run" method="post" style="display:inline;">
+                                <button type="submit" class="btn btn-sm btn-secondary" title="Run Now">▶️</button>
+                            </form>
+                            <button type="button" class="btn btn-sm btn-outline" 
+                                onclick="openEditModal('{{ source.id }}', '{{ source.name }}', '{{ source.url }}', '{{ source.spider_type }}', '{{ source.schedule_interval }}')">
+                                ✏️
+                            </button>
+                            <form action="/crawler/sources/{{ source.id }}/toggle" method="post" style="display:inline;">
+                                <button type="submit" class="btn btn-sm" title="{{ 'Pause' if source.is_active else 'Resume' }}">
+                                    {{ '⏸️' if source.is_active else '▶️' }}
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="text-center text-secondary py-4">No sources configured found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Source Modal -->
+<dialog id="addSourceModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Add Crawl Source</h3>
+            <button class="btn-icon" onclick="document.getElementById('addSourceModal').close()">✕</button>
+        </div>
+        <form action="/crawler/sources/add" method="post">
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" name="name" required placeholder="e.g. Farside BTC" class="input">
+            </div>
+            
+            <div class="form-group">
+                <label>Target URL</label>
+                <input type="url" name="url" required placeholder="https://..." class="input">
+            </div>
+            
+            <div class="form-group">
+                <label>Spider Type</label>
+                <select name="spider_type" class="input">
+                    <option value="farside">Farside Investors (ETF)</option>
+                    <!-- Add more types here as implemented -->
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Schedule Interval (Minutes)</label>
+                <input type="number" name="interval" value="360" min="5" class="input">
+                <p class="form-hint">Default: 6 hours</p>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('addSourceModal').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add Source</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<!-- Edit Source Modal -->
+<dialog id="editSourceModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Edit Crawl Source</h3>
+            <button class="btn-icon" onclick="document.getElementById('editSourceModal').close()">✕</button>
+        </div>
+        <form id="editSourceForm" method="post">
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" name="name" id="edit_name" required class="input">
+            </div>
+            
+            <div class="form-group">
+                <label>Target URL</label>
+                <input type="url" name="url" id="edit_url" required class="input">
+            </div>
+            
+            <div class="form-group">
+                <label>Spider Type</label>
+                <select name="spider_type" id="edit_spider_type" class="input">
+                    <option value="farside">Farside Investors (ETF)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Schedule Interval (Minutes)</label>
+                <input type="number" name="interval" id="edit_interval" min="5" class="input">
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('editSourceModal').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<script>
+    function openEditModal(id, name, url, type, interval) {
+        const modal = document.getElementById('editSourceModal');
+        const form = document.getElementById('editSourceForm');
+        
+        form.action = `/crawler/sources/${id}/update`;
+        document.getElementById('edit_name').value = name;
+        document.getElementById('edit_url').value = url;
+        document.getElementById('edit_spider_type').value = type;
+        document.getElementById('edit_interval').value = interval;
+        
+        modal.showModal();
+    }
+</script>
+{% endblock %}

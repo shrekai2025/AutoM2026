@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  autom2026:
+    build: .
+    container_name: autom2026
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Map config/env to root directory
+      - ./.env:/app/.env:ro
+      # Map persistent data (database) and logs
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai

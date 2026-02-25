@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}新建策略 - AutoM2026{% endblock %}
+
+{% block content %}
+<div class="container animate-fade-in">
+    <div class="card" style="max-width: 600px; margin: 0 auto;">
+        <div class="card-header">
+            <h2 class="card-title">
+                {% if is_edit %}
+                    <span data-i18n="action.edit">编辑</span>
+                    <span data-i18n="strategy.name">策略</span>
+                {% else %}
+                    <span data-i18n="strategy.new.title">创建新策略</span>
+                {% endif %}
+            </h2>
+        </div>
+        
+        <div class="card-content">
+            <form action="{{ '/strategies/' ~ strategy.id ~ '/update' if is_edit else '/strategies/create' }}" method="post">
+                <div class="form-group">
+                    <label class="form-label" data-i18n="strategy.name">策略名称</label>
+                    <input type="text" name="name" class="input" placeholder="例如: BTC_TA_Strategy" value="{{ strategy.name if strategy else '' }}" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" data-i18n="strategy.type">策略类型</label>
+                    <select name="type" class="input" onchange="window.location.href='/strategies/new?type='+this.value" {% if is_edit %}disabled{% endif %}>
+                        {% for type in strategy_types %}
+                        <option value="{{ type.value }}" {% if (strategy and strategy.type == type.value) or (not strategy and strategy_type == type.value) %}selected{% endif %}>
+                            {{ type.value }} 
+                            {% if type.value == 'ta' %}- 技术指标{% elif type.value == 'macro' %}- 宏观趋势{% elif type.value == 'grid' %}- 网格交易{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% if is_edit %}<input type="hidden" name="type" value="{{ strategy.type }}">{% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">执行周期 (分钟)</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" name="schedule_minutes" class="input" min="1" value="{{ strategy.schedule_minutes if strategy else 5 }}" required>
+                        <span class="text-sm text-muted">分钟</span>
+                    </div>
+                    <p class="help-text mt-1 text-xs opacity-70">策略执行的间隔时间，单位为分钟。</p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" data-i18n="strategy.symbol">交易币种</label>
+                    <select name="symbol" class="input">
+                        {% set current_symbol = strategy.symbol if strategy else 'BTC' %}
+                        <option value="BTC" {% if current_symbol == 'BTC' %}selected{% endif %}>BTC</option>
+                        <option value="ETH" {% if current_symbol == 'ETH' %}selected{% endif %}>ETH</option>
+                        <option value="SOL" {% if current_symbol == 'SOL' %}selected{% endif %}>SOL</option>
+                        <option value="DOGE" {% if current_symbol == 'DOGE' %}selected{% endif %}>DOGE</option>
+                    </select>
+                </div>
+                
+                <div class="flex gap-4" style="margin-top: 1.5rem;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="ph-bold {{ 'ph-check' if is_edit else 'ph-plus' }}"></i>
+                        <span>
+                            {% if is_edit %}
+                                <span data-i18n="action.save">保存修改</span>
+                            {% else %}
+                                <span data-i18n="action.create">创建策略</span>
+                            {% endif %}
+                        </span>
+                    </button>
+                    <a href="/strategies" class="btn btn-ghost">
+                        <span data-i18n="action.cancel">取消</span>
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Config Preview -->
+    <div class="card" style="max-width: 600px; margin: 1.5rem auto 0 auto; opacity: 0.8;">
+        <div class="card-header">
+            <h3 class="card-title text-sm text-muted">默认配置预览</h3>
+        </div>
+        <div class="card-content pt-0">
+            <pre style="background-color: rgba(15, 23, 42, 0.5); padding: 1rem; border-radius: 4px; font-size: 0.75rem; overflow: auto; color: var(--muted-foreground);">{{ default_config | tojson(indent=2) }}</pre>
+            <p class="text-sm text-muted mt-2">
+                * 创建后可在详情页修改具体参数
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

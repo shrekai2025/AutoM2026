@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container animate-fade-in">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold flex items-center gap-2">
+                <i class="ph-bold ph-pulse text-primary"></i>
+                <span data-i18n="system.title">系统状态</span>
+            </h1>
+            <p class="text-base-content/60 text-sm mt-1" data-i18n="system.subtitle">外部 API 连接与健康监控</p>
+        </div>
+        <button onclick="window.location.reload()" class="btn btn-sm btn-ghost">
+            <i class="ph-bold ph-arrow-clockwise"></i>
+            <span data-i18n="action.refresh">刷新</span>
+        </button>
+    </div>
+
+    <div class="card bg-base-100 shadow-sm border border-base-200">
+        <div class="card-content p-0">
+            <div class="table-container">
+                <table class="table table-zebra w-full">
+                    <thead>
+                        <tr class="bg-base-200/50 text-xs uppercase tracking-wider text-base-content/60">
+                            <th data-i18n="system.service">服务名称</th>
+                            <th data-i18n="system.type">类型</th>
+                            <th data-i18n="system.status">状态</th>
+                            <th data-i18n="system.latency">延迟</th>
+                            <th data-i18n="system.last_check">最近检查</th>
+                            <th data-i18n="system.message">消息</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for status in api_status_list %}
+                        <tr class="hover">
+                            <td class="font-bold">
+                                {{ status.name }}
+                            </td>
+                            <td>
+                                <span class="badge badge-sm badge-ghost">{{ status.type }}</span>
+                            </td>
+                            <td>
+                                {% if status.status == 'online' %}
+                                    <span class="badge badge-success gap-1">
+                                        <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
+                                        Online
+                                    </span>
+                                {% else %}
+                                    <span class="badge badge-error gap-1">
+                                        <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
+                                        Error
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="font-mono text-sm">
+                                {% if status.latency_ms > 0 %}
+                                    <span class="{{ 'text-success' if status.latency_ms < 500 else 'text-warning' if status.latency_ms < 1500 else 'text-error' }}">
+                                        {{ status.latency_ms }}ms
+                                    </span>
+                                {% else %}
+                                    <span class="opacity-30">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-sm opacity-70">
+                                {{ status.last_check.strftime('%Y-%m-%d %H:%M:%S') }}
+                            </td>
+                            <td class="text-xs opacity-60 max-w-xs truncate" title="{{ status.message }}">
+                                {{ status.message }}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-12 text-base-content/50">
+                                <i class="ph-bold ph-activity text-3xl mb-2 block opacity-30"></i>
+                                暂无状态记录
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

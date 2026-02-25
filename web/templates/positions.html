@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container animate-fade-in">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-xl font-bold mb-1" data-i18n="position.title">当前持仓</h1>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-content p-0">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-i18n="strategy.name">策略</th>
+                            <th data-i18n="position.symbol">标的</th>
+                            <th class="text-right" data-i18n="position.amount">持仓量</th>
+                            <th class="text-right" data-i18n="position.avg_cost">平均成本</th>
+                            <th class="text-right" data-i18n="position.current_price">当前价格</th>
+                            <th class="text-right" data-i18n="position.market_value">市值</th>
+                            <th class="text-right" data-i18n="position.unrealized_pnl">未实现盈亏</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for position in positions %}
+                        <tr>
+                            <td>
+                                <span class="badge badge-outline">{{ position.strategy_id }}</span>
+                            </td>
+                            <td class="font-bold">{{ position.symbol }}</td>
+                            <td class="text-right">{{ position.amount }}</td>
+                            <td class="text-right">${{ "%.2f"|format(position.avg_cost) }}</td>
+                            <td class="text-right">
+                                <div class="flex items-center justify-end gap-1">
+                                    ${{ "%.2f"|format(position.current_price) }}
+                                    <span class="live-indicator connected"></span>
+                                </div>
+                            </td>
+                            <td class="text-right font-medium">${{ "%.2f"|format(position.amount * position.current_price) }}</td>
+                            <td class="text-right">
+                                {% set pnl = (position.current_price - position.avg_cost) * position.amount %}
+                                {% set pnl_pct = (position.current_price - position.avg_cost) / position.avg_cost * 100 %}
+                                <span class="badge {{ 'badge-green' if pnl >= 0 else 'badge-red' }}">
+                                    {{ "+" if pnl >= 0 else "" }}{{ "%.2f"|format(pnl) }} 
+                                    ({{ "+" if pnl >= 0 else "" }}{{ "%.2f"|format(pnl_pct) }}%)
+                                </span>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-8" data-i18n="status.noData">暂无持仓</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

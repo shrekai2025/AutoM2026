@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container animate-fade-in">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-xl font-bold mb-1" data-i18n="strategy.list.title">策略管理</h1>
+        </div>
+        <a href="/strategies/new" class="btn btn-primary">
+            <i class="ph ph-plus" style="font-size: 16px;"></i>
+            <span data-i18n="action.create">新建策略</span>
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-content p-0">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-i18n="strategy.id">ID</th>
+                            <th data-i18n="strategy.name">策略名称</th>
+                            <th data-i18n="strategy.type">类型</th>
+                            <th data-i18n="strategy.symbol">交易对</th>
+                            <th data-i18n="strategy.status">状态</th>
+                            <th data-i18n="strategy.lastSignal">最后信号</th>
+                            <th class="text-right" data-i18n="strategy.actions">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for strategy in strategies %}
+                        <tr>
+                            <td class="text-muted text-xs">#{{ strategy.id }}</td>
+                            <td class="font-bold">
+                                <a href="/strategies/{{ strategy.id }}" class="link">
+                                    {{ strategy.name }}
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge badge-gray" data-i18n="strategy.type.{{ strategy.type }}">
+                                    {{ strategy.type }}
+                                </span>
+                            </td>
+                            <td>{{ strategy.symbol }}</td>
+                            <td>
+                                {% if strategy.status == "active" %}
+                                    <span class="badge badge-green flex items-center gap-1">
+                                        <span class="live-indicator connected" style="width: 6px; height: 6px; margin: 0;"></span>
+                                        <span data-i18n="status.active">运行中</span>
+                                    </span>
+                                {% elif strategy.status == "paused" %}
+                                    <span class="badge badge-yellow" data-i18n="status.paused">已暂停</span>
+                                {% elif strategy.status == "error" %}
+                                    <span class="badge badge-red" data-i18n="status.error">异常</span>
+                                {% else %}
+                                    <span class="badge badge-gray" data-i18n="status.stopped">已停止</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if strategy.last_signal %}
+                                    <span class="badge badge-outline text-xs">
+                                        {{ strategy.last_signal }} 
+                                        {% if strategy.last_conviction_score is not none %}
+                                            ({{ "%.2f"|format(strategy.last_conviction_score) }})
+                                        {% endif %}
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted text-xs">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-right">
+                                <div class="flex justify-end gap-2">
+                                    <form action="/strategies/{{ strategy.id }}/toggle" method="post" style="display:inline;">
+                                        {% if strategy.status == 'active' %}
+                                            <button type="submit" class="btn btn-sm btn-outline text-bear" title="Pause">
+                                                <i class="ph ph-pause" style="font-size: 14px;"></i>
+                                            </button>
+                                        {% else %}
+                                            <button type="submit" class="btn btn-sm btn-outline text-bull" title="Start">
+                                                <i class="ph ph-play" style="font-size: 14px;"></i>
+                                            </button>
+                                        {% endif %}
+                                    </form>
+                                    
+                                    <form action="/strategies/{{ strategy.id }}/run" method="post" style="display:inline;">
+                                        <button type="submit" class="btn btn-sm btn-outline" title="Run Once">
+                                            <i class="ph ph-lightning" style="font-size: 14px;"></i>
+                                        </button>
+                                    </form>
+
+                                    <form action="/strategies/{{ strategy.id }}/delete" method="post" style="display:inline;" onsubmit="event.preventDefault(); const form = this; ui.confirm(t('msg.confirm_delete'), () => form.submit());">
+                                        <button type="submit" class="btn btn-sm btn-outline hover:text-bear" title="Delete">
+                                            <i class="ph ph-trash" style="font-size: 14px;"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-8">
+                                <p class="mb-4" data-i18n="status.noData">暂无策略</p>
+                                <a href="/strategies/new" class="btn btn-primary" data-i18n="action.create">新建策略</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
