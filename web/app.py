@@ -1182,6 +1182,84 @@ async def system_status(request: Request):
             "api_status_list": api_status_list
         })
 
+
+@app.post("/system/health-check")
+async def run_health_check(background_tasks: BackgroundTasks):
+    """手动触发所有服务健康检查，写入 api_status 表"""
+    background_tasks.add_task(_do_health_checks)
+    return RedirectResponse(url="/system/status", status_code=303)
+
+
+async def _do_health_checks():
+    """执行所有服务健康检查并写入数据库"""
+    import time as _time
+    import aiohttp
+    from core.monitor import monitor
+    from config import FRED_API_KEY, OPENROUTER_API_KEY, LLM_ENABLED
+
+    checks = []
+
+    # 1. Binance API
+    try:
+        start = _time.time()
+        async with aiohttp.ClientSession() as s:
+            async with s.get("https://api.binance.com/api/v3/ping", timeout=aiohttp.ClientTimeout(total=8)) as r:
+                latency = int((_time.time() - start) * 1000)
+                if r.status == 200:
+                    checks.append(("Binance API (Public)", "REST", True, latency, "ping OK"))
+                else:
+                    checks.append(("Binance API (Public)", "REST", False, latency, f"HTTP {r.status}"))
+    except Exception as e:
+        checks.append(("Binance API (Public)", "REST", False, 0, str(e)[:120]))
+
+    # 2. FRED API
+    if FRED_API_KEY:
+        try:
+            start = _time.time()
+            url = f"https://api.stlouisfed.org/fred/series?series_id=DGS10&api_key={FRED_API_KEY}&file_type=json"
+            async with aiohttp.ClientSession() as s:
+                async with s.get(url, timeout=aiohttp.ClientTimeout(total=8)) as r:
+                    latency = int((_time.time() - start) * 1000)
+                    checks.append(("FRED API", "Macro", r.status == 200, latency,
+                                   "OK" if r.status == 200 else f"HTTP {r.status}"))
+        except Exception as e:
+            checks.append(("FRED API", "Macro", False, 0, str(e)[:120]))
+    else:
+        checks.append(("FRED API", "Macro", False, 0, "未配置 FRED_API_KEY"))
+
+    # 3. Fear & Greed
+    try:
+        start = _time.time()
+        async with aiohttp.ClientSession() as s:
+            async with s.get("https://api.alternative.me/fng/", timeout=aiohttp.ClientTimeout(total=8)) as r:
+                latency = int((_time.time() - start) * 1000)
+                checks.append(("Fear & Greed Index", "REST", r.status == 200, latency,
+                               "OK" if r.status == 200 else f"HTTP {r.status}"))
+    except Exception as e:
+        checks.append(("Fear & Greed Index", "REST", False, 0, str(e)[:120]))
+
+    # 4. OpenRouter
+    if OPENROUTER_API_KEY:
+        try:
+            start = _time.time()
+            async with aiohttp.ClientSession() as s:
+                async with s.get("https://openrouter.ai/api/v1/models",
+                                 headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                                 timeout=aiohttp.ClientTimeout(total=8)) as r:
+                    latency = int((_time.time() - start) * 1000)
+                    checks.append(("OpenRouter API", "LLM", r.status == 200, latency,
+                                   "OK" if r.status == 200 else f"HTTP {r.status}"))
+        except Exception as e:
+            checks.append(("OpenRouter API", "LLM", False, 0, str(e)[:120]))
+    else:
+        checks.append(("OpenRouter API", "LLM", False, 0, "未配置 OPENROUTER_API_KEY"))
+
+    # 写入数据库
+    for name, type_, ok, latency, msg in checks:
+        await monitor.record_status(name, type_, ok, latency, msg)
+
+    logger.info(f"Health check completed: {len(checks)} services checked")
+
 @app.post("/crawler/sources/{id}/run")
 async def run_crawl_source_now(id: int):
     """Manually trigger a crawl for a source (runs in background, non-blocking)"""

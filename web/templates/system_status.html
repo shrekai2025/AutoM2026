@@ -10,10 +10,19 @@
             </h1>
             <p class="text-base-content/60 text-sm mt-1" data-i18n="system.subtitle">外部 API 连接与健康监控</p>
         </div>
-        <button onclick="window.location.reload()" class="btn btn-sm btn-ghost">
-            <i class="ph-bold ph-arrow-clockwise"></i>
-            <span data-i18n="action.refresh">刷新</span>
-        </button>
+        <div class="flex items-center gap-2">
+            <form method="post" action="/system/health-check" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="ph-bold ph-heartbeat"></i>
+                    立即检查
+                </button>
+            </form>
+            <button onclick="window.location.reload()" class="btn btn-sm btn-ghost">
+                <i class="ph-bold ph-arrow-clockwise"></i>
+                <span data-i18n="action.refresh">刷新</span>
+            </button>
+        </div>
+
     </div>
 
     <div class="card bg-base-100 shadow-sm border border-base-200">
