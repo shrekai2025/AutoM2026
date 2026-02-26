@@ -5,119 +5,200 @@
     expanded: null,
     copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
-            alert('已复制到剪贴板');
+            // Optional: Show a subtle toast or change icon
         });
     }
 }">
-    <div class="mb-8">
-        <h1 class="text-2xl font-bold mb-2">API Documentation</h1>
-        <p class="text-muted">AutoM2026 对外开放的 API 接口列表，供 Agent 或第三方系统集成调用。</p>
+    <div class="mb-10 text-center">
+        <h1
+            class="text-3xl font-extrabold mb-4 bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+            AutoM2026 Developer Documentation
+        </h1>
+        <p class="text-muted max-w-2xl mx-auto">
+            完整的 API 参考手册。包含输入参数定义、返回数据结构以及默认值说明，助力 AI Agent 与第三方系统的无缝集成。
+        </p>
     </div>
 
     <!-- API Categories -->
-    <div class="space-y-6">
+    <div class="space-y-8 pb-20">
         {% for cat in api_docs %}
-        <div class="card">
-            <div class="card-header border-b bg-muted/30 py-3">
-                <h2 class="text-lg font-semibold">{{ cat.category }}</h2>
+        <section>
+            <div class="flex items-center gap-3 mb-4 px-2">
+                <div class="w-1.5 h-6 bg-primary rounded-full"></div>
+                <h2 class="text-xl font-bold italic">{{ cat.category }}</h2>
             </div>
-            <div class="card-content p-0">
-                <div class="divide-y divide-border">
-                    {% for api in cat.endpoints %}
-                    <div class="api-item">
-                        <!-- Summary Row -->
-                        <div class="p-4 flex items-center justify-between cursor-pointer hover:bg-muted/20 transition-colors"
-                            @click="expanded = (expanded === '{{ api.path }}' ? null : '{{ api.path }}')">
-                            <div class="flex items-center gap-4">
-                                <span
-                                    class="badge {{ 'badge-blue' if api.method == 'GET' else 'badge-green' }} font-bold rounded px-2 py-1"
-                                    style="min-width: 60px; text-align: center;">
-                                    {{ api.method }}
-                                </span>
-                                <code class="text-sm font-mono font-semibold">{{ api.path }}</code>
-                                <span class="text-sm text-muted ml-4">{{ api.description }}</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <button class="btn btn-ghost btn-xs" @click.stop="copyToClipboard('{{ api.path }}')">
-                                    <i class="ph ph-copy"></i>
-                                </button>
-                                <i class="ph ph-caret-down transition-transform"
-                                    :class="expanded === '{{ api.path }}' ? 'rotate-180' : ''"></i>
-                            </div>
-                        </div>
 
-                        <!-- Details Body -->
-                        <div x-show="expanded === '{{ api.path }}'" x-collapse
-                            class="bg-muted/10 p-4 border-t border-dashed">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <h4 class="text-xs uppercase font-bold text-muted mb-2">Parameters</h4>
-                                    {% if api.params %}
-                                    <table class="w-full text-xs">
-                                        <thead>
-                                            <tr class="text-left border-b border-border">
-                                                <th class="pb-1">Name</th>
-                                                <th class="pb-1">Type</th>
-                                                <th class="pb-1">Required</th>
-                                                <th class="pb-1">Description</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-border/50">
-                                            {% for p in api.params %}
-                                            <tr>
-                                                <td class="py-2"><code class="text-primary">{{ p.name }}</code></td>
-                                                <td class="py-2 text-muted">{{ p.type }}</td>
-                                                <td class="py-2">
-                                                    {% if p.required %}
-                                                    <span class="text-red-500">Yes</span>
-                                                    {% else %}
-                                                    <span class="text-muted">No</span>
-                                                    {% endif %}
-                                                </td>
-                                                <td class="py-2">{{ p.description }}</td>
-                                            </tr>
-                                            {% endfor %}
-                                        </tbody>
-                                    </table>
-                                    {% else %}
-                                    <p class="text-xs text-muted">No parameters required.</p>
-                                    {% endif %}
+            <div class="grid grid-cols-1 gap-4">
+                {% for api in cat.endpoints %}
+                <div class="card overflow-hidden transition-all duration-300 border-border/50 hover:border-primary/30"
+                    :class="expanded === '{{ api.path }}' ? 'ring-1 ring-primary/20 shadow-lg mb-4' : ''">
+
+                    <!-- Header -->
+                    <div class="p-4 flex flex-wrap items-center justify-between cursor-pointer group"
+                        @click="expanded = (expanded === '{{ api.path }}' ? null : '{{ api.path }}')">
+                        <div class="flex items-center gap-4 flex-1 min-w-[300px]">
+                            <span
+                                class="font-mono text-[10px] font-bold tracking-widest uppercase py-1 px-2 rounded 
+                                 {{ 'bg-blue-500/10 text-blue-500' if api.method == 'GET' else 'bg-emerald-500/10 text-emerald-500' }}">
+                                {{ api.method }}
+                            </span>
+                            <code
+                                class="text-sm font-mono font-bold text-foreground group-hover:text-primary transition-colors">
+                                {{ api.path }}
+                            </code>
+                            <span class="text-sm text-muted hidden md:inline-block">— {{ api.description }}</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <button class="text-muted hover:text-primary p-1 rounded-md transition-colors"
+                                @click.stop="copyToClipboard('{{ api.path }}')" title="Copy Path">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                            <i class="ph ph-caret-down transition-transform duration-300"
+                                :class="expanded === '{{ api.path }}' ? 'rotate-180 text-primary' : 'text-muted'"></i>
+                        </div>
+                    </div>
+
+                    <!-- Body -->
+                    <div x-show="expanded === '{{ api.path }}'" x-collapse>
+                        <div class="p-6 bg-muted/5 border-t border-border/30">
+                            <!-- Mobile-only description -->
+                            <p class="text-sm text-muted mb-6 md:hidden">{{ api.description }}</p>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                                <!-- Left Column: Parameters -->
+                                <div class="lg:col-span-12">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                        <!-- Inputs -->
+                                        <div>
+                                            <div class="flex items-center gap-2 mb-4">
+                                                <i class="ph ph-sign-in text-primary"></i>
+                                                <h4 class="text-sm font-bold uppercase tracking-tight">Input Parameters
+                                                </h4>
+                                            </div>
+                                            {% if api.inputs %}
+                                            <div
+                                                class="table-container rounded-lg border border-border/50 overflow-hidden">
+                                                <table class="w-full text-xs">
+                                                    <thead class="bg-muted/10">
+                                                        <tr class="text-left">
+                                                            <th class="p-3 font-semibold text-muted">Field</th>
+                                                            <th class="p-3 font-semibold text-muted">Type</th>
+                                                            <th class="p-3 font-semibold text-muted">Default</th>
+                                                            <th class="p-3 font-semibold text-muted">Desc</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="divide-y divide-border/30">
+                                                        {% for inp in api.inputs %}
+                                                        <tr class="hover:bg-muted/5 transition-colors">
+                                                            <td class="p-3">
+                                                                <div class="flex flex-col">
+                                                                    <code
+                                                                        class="text-primary font-bold">{{ inp.name }}</code>
+                                                                    {% if inp.required %}<span
+                                                                        class="text-[10px] text-bear mt-0.5">Required</span>{%
+                                                                    endif %}
+                                                                </div>
+                                                            </td>
+                                                            <td class="p-3"><span class="text-muted-foreground">{{
+                                                                    inp.type }}</span></td>
+                                                            <td class="p-3"><code
+                                                                    class="bg-muted/20 px-1 rounded">{{ inp.default if inp.default is not none else '-' }}</code>
+                                                            </td>
+                                                            <td class="p-3 text-muted-foreground">{{ inp.description }}
+                                                            </td>
+                                                        </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            {% else %}
+                                            <div
+                                                class="p-4 rounded-lg bg-muted/10 border border-dashed border-border/50 text-center text-xs text-muted">
+                                                No specific parameters required
+                                            </div>
+                                            {% endif %}
+                                        </div>
+
+                                        <!-- Outputs -->
+                                        <div>
+                                            <div class="flex items-center gap-2 mb-4">
+                                                <i class="ph ph-sign-out text-emerald-400"></i>
+                                                <h4 class="text-sm font-bold uppercase tracking-tight">Output Schema
+                                                </h4>
+                                            </div>
+                                            {% if api.outputs %}
+                                            <div
+                                                class="table-container rounded-lg border border-border/50 overflow-hidden">
+                                                <table class="w-full text-xs">
+                                                    <thead class="bg-muted/10">
+                                                        <tr class="text-left">
+                                                            <th class="p-3 font-semibold text-muted">Field</th>
+                                                            <th class="p-3 font-semibold text-muted">Type</th>
+                                                            <th class="p-3 font-semibold text-muted">Meaning</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="divide-y divide-border/30">
+                                                        {% for out in api.outputs %}
+                                                        <tr class="hover:bg-muted/5 transition-colors">
+                                                            <td class="p-3"><code
+                                                                    class="text-emerald-400 font-bold">{{ out.name }}</code>
+                                                            </td>
+                                                            <td class="p-3"><span class="text-muted-foreground">{{
+                                                                    out.type }}</span></td>
+                                                            <td class="p-3 text-muted-foreground">{{ out.description }}
+                                                            </td>
+                                                        </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            {% else %}
+                                            <p class="text-xs text-muted italic">Dynamic response structure (refer to
+                                                example)</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h4 class="text-xs uppercase font-bold text-muted mb-2">Example Response</h4>
+
+                                <!-- Example Box -->
+                                <div class="lg:col-span-12">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <div class="flex items-center gap-2">
+                                            <i class="ph ph-code text-primary"></i>
+                                            <h4 class="text-sm font-bold uppercase">JSON Response Example</h4>
+                                        </div>
+                                        <span
+                                            class="text-[10px] text-muted-foreground font-mono">application/json</span>
+                                    </div>
                                     <pre
-                                        class="bg-card border p-3 rounded-lg text-xs overflow-x-auto shadow-inner"><code class="text-green-400">{{ api.example | default('{\n  "status": "success",\n  "data": { ... }\n}') }}</code></pre>
+                                        class="bg-[#0f172a] p-5 rounded-xl text-xs overflow-x-auto border border-white/5 shadow-2xl relative">
+<code class="text-emerald-400 leading-relaxed">{{ api.example | default('{\n  "status": "success",\n  "data": { ... }\n}') }}</code></pre>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    {% endfor %}
                 </div>
+                {% endfor %}
             </div>
-        </div>
+        </section>
         {% endfor %}
     </div>
 </div>
 
 <style>
-    .api-item:last-child {
-        border-bottom: none;
+    .card-gradient {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.4) 100%);
+        backdrop-filter: blur(8px);
     }
 
     .badge-blue {
-        background-color: rgba(59, 130, 246, 0.1);
-        color: #3b82f6;
-        border: 1px solid rgba(59, 130, 246, 0.2);
+        background: rgba(59, 130, 246, 0.1);
+        color: #60a5fa;
     }
 
-    .badge-green {
-        background-color: rgba(34, 197, 94, 0.1);
-        color: #22c55e;
-        border: 1px solid rgba(34, 197, 94, 0.2);
-    }
-
-    [x-cloak] {
-        display: none !important;
+    .badge-emerald {
+        background: rgba(16, 185, 129, 0.1);
+        color: #34d399;
     }
 </style>
 {% endblock %}

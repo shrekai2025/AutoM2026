@@ -130,117 +130,165 @@ async def system_status(request: Request):
     })
 @router.get("/docs", response_class=HTMLResponse)
 async def api_docs_page(request: Request):
-    """API 文档页"""
+    """API 终极参考手册 - 每一个字段都有据可查"""
     api_docs = [
         {
-            "category": "Market Data & Macro",
+            "category": "1. Market Data & Comprehensive Stats",
             "endpoints": [
                 {
                     "method": "GET",
                     "path": "/api/market/indicators",
-                    "description": "获取所有宏观经济指标、恐慌指数、ETF规模等核心数据。",
-                    "example": '{\n  "status": "success",\n  "indicators": [\n    {"name_zh": "AHR999", "value": "0.65", ...}\n  ]\n}'
-                },
-                {
-                    "method": "GET",
-                    "path": "/api/price/{symbol}",
-                    "description": "获取特定数字货币的实时价格。",
-                    "params": [{"name": "symbol", "type": "string", "required": True, "description": "交易对符号，如 BTCUSDT"}]
+                    "description": "获取系统仪表盘所有核心指标卡片。聚合了 FRED 宏观经济数据、CoinGecko 估值、算力及波动率。",
+                    "inputs": [],
+                    "outputs": [
+                        {"name": "indicators", "type": "array", "description": "所有卡片数据的集合"},
+                        {"name": "indicators[].name_zh", "type": "string", "description": "中文友好名称 (e.g. 10年期美债收益率)"},
+                        {"name": "indicators[].abbr", "type": "string", "description": "代码标识 (e.g. US10Y, AHR999)"},
+                        {"name": "indicators[].value", "type": "string", "description": "带单位的格式化值 (e.g. 4.3%, $68K)"},
+                        {"name": "indicators[].tags", "type": "array", "description": "分类标签 (宏观, 情绪, 估值)"},
+                        {"name": "indicators[].desc", "type": "string", "description": "数据含义详细描述或数据来源网站"}
+                    ]
                 },
                 {
                     "method": "GET",
                     "path": "/api/etf/all",
-                    "description": "获取 BTC/ETH ETF 的聚合持仓和 AUM 数据。"
+                    "description": "实时获取全网 BTC 和 ETH 现货 ETF 的净值/持仓/AUM 数据。优先读取爬虫缓存，失效后触发链上实时校对。",
+                    "inputs": [],
+                    "outputs": [
+                        {"name": "etf_aum", "type": "object", "description": "按 Ticker 索引的详情 (IBIT, FBTC, FBTC, etc.)"},
+                        {"name": "etf_aum.{Ticker}.aum_usd", "type": "number", "description": "该 ETF 持仓折合美元价值"},
+                        {"name": "etf_aum.{Ticker}.ok", "type": "boolean", "description": "数据是否成功获取"},
+                        {"name": "btc_total", "type": "number", "description": "全网 BTC ETF 算力币持仓合计数"},
+                        {"name": "eth_total", "type": "number", "description": "全网 ETH ETF 持仓合计数"}
+                    ]
                 }
             ]
         },
         {
-            "category": "AI Agent Service",
+            "category": "2. AI Agent Core Hub (V1)",
             "endpoints": [
                 {
                     "method": "GET",
                     "path": "/api/v1/data/snapshot",
-                    "description": "提供给 AI Agent 的完整状态快照（持仓、资金、指标）。",
-                    "example": '{\n  "timestamp": "...",\n  "portfolio": { ... },\n  "market": { ... }\n}'
+                    "description": "Agent 决策专用全局快照。一次性包含所有必要上下文：实时行情 + 宏观指标 + 溢价指标 + 算力数据。",
+                    "inputs": [],
+                    "outputs": [
+                        {"name": "generated_at", "type": "ISO8601", "description": "快照生成精确时间"},
+                        {"name": "markets", "type": "array", "description": "观察列表中的币种动态: [symbol, price, change_24h, high_24h, volume, is_live]"},
+                        {"name": "macro.fed_rate", "type": "number", "description": "美联储隔夜拆借利率 (%)"},
+                        {"name": "macro.fear_greed", "type": "object", "description": "{value: 0-100, classification: Fear/Greed/...}"},
+                        {"name": "macro.mstr_mnav", "type": "number", "description": "MSTR 溢价率 (mNAV)。> 1 代表美股市场看涨情绪强于现货"},
+                        {"name": "macro.stablecoin_supply_b", "type": "number", "description": "全网稳定币存量 (B USD)，反映入场流动性"},
+                        {"name": "macro.etf_flows", "type": "object", "description": "BTC/ETH ETF 当日详细流入额 (USD)"}
+                    ]
                 },
                 {
                     "method": "GET",
                     "path": "/api/v1/data/klines/{symbol}",
-                    "description": "获取指定周期的历史 K 线数据。",
-                    "params": [
-                        {"name": "symbol", "type": "string", "required": True, "description": "符号"},
-                        {"name": "interval", "type": "string", "required": False, "description": "周期, 默认 1h"},
-                        {"name": "limit", "type": "int", "required": False, "description": "数量"}
+                    "description": "高性能历史 K 线。本地数据库优先，自动增量补齐。适合回测或策略分析。",
+                    "inputs": [
+                        {"name": "symbol", "type": "string", "required": True, "description": "代币代码 (如 BTC, SOL)"},
+                        {"name": "timeframe", "type": "string", "required": False, "description": "1m, 5m, 15m, 1h, 4h, 1d", "default": "1h"},
+                        {"name": "limit", "type": "integer", "required": False, "description": "返回深度 (1-500)", "default": "100"},
+                        {"name": "skip_sync", "type": "boolean", "required": False, "description": "跳过后台数据补全逻辑，立刻返回缓存", "default": "false"}
                     ]
                 },
                 {
                     "method": "POST",
                     "path": "/api/v1/data/signals",
-                    "description": "提交由 AI 分析生成的交易信号。",
-                    "params": [
-                        {"name": "symbol", "type": "string", "required": True, "description": "交易对"},
-                        {"name": "side", "type": "string", "required": True, "description": "BUY / SELL"},
-                        {"name": "reason", "type": "string", "required": False, "description": "交易理由"}
+                    "description": "将分布式 Agent 的分析结果回传并入库，实现统一监控和反馈学习。",
+                    "inputs": [
+                        {"name": "symbol", "type": "string", "required": True, "description": "标的代码"},
+                        {"name": "action", "type": "string", "required": True, "description": "BUY | SELL | HOLD"},
+                        {"name": "conviction", "type": "number", "required": False, "description": "信心指数 (0.0-100.0)", "default": "50.0"},
+                        {"name": "reason", "type": "string", "required": False, "description": "详细分析理由 (JSON 或长文本)"},
+                        {"name": "price_at_signal", "type": "number", "required": False, "description": "发出信号时的当前价格"}
+                    ]
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/v1/data/signals",
+                    "description": "检索历史决策信号。用于 AI 复盘分析效果。",
+                    "inputs": [
+                        {"name": "symbol", "type": "string", "required": False, "description": "按币种过滤"},
+                        {"name": "limit", "type": "integer", "required": False, "description": "返回条目数", "default": "50"}
                     ]
                 }
             ]
         },
         {
-            "category": "Risk & Portfolio",
-            "endpoints": [
-                {
-                    "method": "GET",
-                    "path": "/api/risk/status",
-                    "description": "查看风控模块状态及熔断状态。"
-                },
-                {
-                    "method": "GET",
-                    "path": "/api/portfolio/snapshots",
-                    "description": "获取账户净值历史快照（用于绘图）。"
-                }
-            ]
-        },
-        {
-            "category": "Strategy & System",
-            "endpoints": [
-                {
-                    "method": "GET",
-                    "path": "/api/strategies",
-                    "description": "获取当前系统加载的所有策略实例及其状态。"
-                },
-                {
-                    "method": "GET",
-                    "path": "/api/scheduler/jobs",
-                    "description": "查看定时任务调度器的运行队列。"
-                }
-            ]
-        },
-        {
-            "category": "DeFi Lab",
+            "category": "3. DeFi & On-chain Analysis",
             "endpoints": [
                 {
                     "method": "POST",
                     "path": "/api/defi/backtest",
-                    "description": "执行双币轮动策略历史回测。",
-                    "params": [
-                        {"name": "asset_a_symbol", "type": "string", "required": True, "description": "主资产"},
-                        {"name": "asset_b_symbol", "type": "string", "required": True, "description": "对标资产"},
-                        {"name": "mode", "type": "string", "required": True, "description": "SMA / FIXED"}
+                    "description": "双币资产轮动模拟器。支持币安或 Gecko 端数据回测。",
+                    "inputs": [
+                        {"name": "asset_a_symbol", "type": "string", "required": True, "description": "基础资产 (e.g. ETH)"},
+                        {"name": "asset_b_symbol", "type": "string", "required": True, "description": "对标资产 (e.g. BTC)"},
+                        {"name": "mode", "type": "string", "required": True, "description": "SMA | EMA (均线回归) | FIXED (固定百分比区间)"},
+                        {"name": "use_ema", "type": "boolean", "required": False, "description": "是否启用指数移动平均", "default": "true"},
+                        {"name": "window_size", "type": "integer", "required": False, "description": "计算均线的窗口天数", "default": "30"},
+                        {"name": "no_loss_sell", "type": "boolean", "required": False, "description": "防回撤保护：买回基准资产时如低于卖出价则拒绝成交", "default": "true"}
+                    ],
+                    "outputs": [
+                        {"name": "summary.total_return_pct", "type": "number", "description": "累计绝对收益率"},
+                        {"name": "summary.annualized_return_pct", "type": "number", "description": "年化收益率"},
+                        {"name": "summary.max_drawdown_pct", "type": "number", "description": "最大回撤深度"},
+                        {"name": "trades", "type": "array", "description": "全部模拟成交历史"}
+                    ]
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/defi/pool-history/{network}/{address}",
+                    "description": "拉取 DEX 的池子历史价格点位。",
+                    "inputs": [
+                        {"name": "network", "type": "string", "required": True, "description": "网络标识 (eth, sol, polygon...)"},
+                        {"name": "address", "type": "string", "required": True, "description": "池子合约地址"},
+                        {"name": "start", "type": "string", "required": False, "description": "ISO 开始日期"},
+                        {"name": "end", "type": "string", "required": False, "description": "ISO 结束日期"}
                     ]
                 }
             ]
         },
         {
-            "category": "Technical Analysis (TA)",
+            "category": "4. Strategy Management",
             "endpoints": [
                 {
-                    "method": "POST",
-                    "path": "/api/v1/ta/analyze",
-                    "description": "对特定品种进行全家桶技术指标分析。",
-                    "params": [
-                        {"name": "symbol", "type": "string", "required": True, "description": "交易对"},
-                        {"name": "indicators", "type": "list", "required": False, "description": "可选指标列表"}
+                    "method": "GET",
+                    "path": "/api/strategies",
+                    "description": "查询当前所有自动化策略的活跃状态及参数配置。",
+                    "outputs": [
+                        {"name": "[].id", "type": "string", "description": "唯一特征 ID"},
+                        {"name": "[].status", "type": "string", "description": "ACTIVE | PAUSED | CLOSED"},
+                        {"name": "[].pnl_pct", "type": "number", "description": "该策略自启动以来的盈亏率"}
                     ]
+                },
+                {
+                    "method": "POST",
+                    "path": "/api/strategies/{id}/toggle",
+                    "description": "即时控制策略的运行或停止。",
+                    "inputs": [{"name": "id", "type": "string", "required": True, "description": "策略数据库 ID"}]
+                }
+            ]
+        },
+        {
+            "category": "5. Risk Management",
+            "endpoints": [
+                {
+                    "method": "GET",
+                    "path": "/api/risk/status",
+                    "description": "核心熔断器状态检测。包含回撤报警等级和熔断开关状态。",
+                    "outputs": [
+                        {"name": "circuit_breaker_active", "type": "boolean", "description": "全站是否处在禁买锁定期 (熔断状态)"},
+                        {"name": "risk_level", "type": "string", "description": "LOW | MEDIUM | HIGH"}
+                    ]
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/risk/events",
+                    "description": "审计追踪：获取最近触碰风控线的详细事件记录。",
+                    "inputs": [{"name": "limit", "type": "integer", "required": False, "description": "回访条目", "default": "50"}]
                 }
             ]
         }
@@ -248,5 +296,5 @@ async def api_docs_page(request: Request):
     return templates.TemplateResponse("docs.html", {
         "request": request,
         "api_docs": api_docs,
-        "title": "API Documentation - AutoM2026"
+        "title": "Developer Documentation - AutoM2026"
     })
