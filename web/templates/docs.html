@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container animate-fade-in" x-data="{ 
+    expanded: null,
+    copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            alert('已复制到剪贴板');
+        });
+    }
+}">
+    <div class="mb-8">
+        <h1 class="text-2xl font-bold mb-2">API Documentation</h1>
+        <p class="text-muted">AutoM2026 对外开放的 API 接口列表，供 Agent 或第三方系统集成调用。</p>
+    </div>
+
+    <!-- API Categories -->
+    <div class="space-y-6">
+        {% for cat in api_docs %}
+        <div class="card">
+            <div class="card-header border-b bg-muted/30 py-3">
+                <h2 class="text-lg font-semibold">{{ cat.category }}</h2>
+            </div>
+            <div class="card-content p-0">
+                <div class="divide-y divide-border">
+                    {% for api in cat.endpoints %}
+                    <div class="api-item">
+                        <!-- Summary Row -->
+                        <div class="p-4 flex items-center justify-between cursor-pointer hover:bg-muted/20 transition-colors"
+                            @click="expanded = (expanded === '{{ api.path }}' ? null : '{{ api.path }}')">
+                            <div class="flex items-center gap-4">
+                                <span
+                                    class="badge {{ 'badge-blue' if api.method == 'GET' else 'badge-green' }} font-bold rounded px-2 py-1"
+                                    style="min-width: 60px; text-align: center;">
+                                    {{ api.method }}
+                                </span>
+                                <code class="text-sm font-mono font-semibold">{{ api.path }}</code>
+                                <span class="text-sm text-muted ml-4">{{ api.description }}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button class="btn btn-ghost btn-xs" @click.stop="copyToClipboard('{{ api.path }}')">
+                                    <i class="ph ph-copy"></i>
+                                </button>
+                                <i class="ph ph-caret-down transition-transform"
+                                    :class="expanded === '{{ api.path }}' ? 'rotate-180' : ''"></i>
+                            </div>
+                        </div>
+
+                        <!-- Details Body -->
+                        <div x-show="expanded === '{{ api.path }}'" x-collapse
+                            class="bg-muted/10 p-4 border-t border-dashed">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <h4 class="text-xs uppercase font-bold text-muted mb-2">Parameters</h4>
+                                    {% if api.params %}
+                                    <table class="w-full text-xs">
+                                        <thead>
+                                            <tr class="text-left border-b border-border">
+                                                <th class="pb-1">Name</th>
+                                                <th class="pb-1">Type</th>
+                                                <th class="pb-1">Required</th>
+                                                <th class="pb-1">Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-border/50">
+                                            {% for p in api.params %}
+                                            <tr>
+                                                <td class="py-2"><code class="text-primary">{{ p.name }}</code></td>
+                                                <td class="py-2 text-muted">{{ p.type }}</td>
+                                                <td class="py-2">
+                                                    {% if p.required %}
+                                                    <span class="text-red-500">Yes</span>
+                                                    {% else %}
+                                                    <span class="text-muted">No</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td class="py-2">{{ p.description }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    {% else %}
+                                    <p class="text-xs text-muted">No parameters required.</p>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <h4 class="text-xs uppercase font-bold text-muted mb-2">Example Response</h4>
+                                    <pre
+                                        class="bg-card border p-3 rounded-lg text-xs overflow-x-auto shadow-inner"><code class="text-green-400">{{ api.example | default('{\n  "status": "success",\n  "data": { ... }\n}') }}</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+    .api-item:last-child {
+        border-bottom: none;
+    }
+
+    .badge-blue {
+        background-color: rgba(59, 130, 246, 0.1);
+        color: #3b82f6;
+        border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+
+    .badge-green {
+        background-color: rgba(34, 197, 94, 0.1);
+        color: #22c55e;
+        border: 1px solid rgba(34, 197, 94, 0.2);
+    }
+
+    [x-cloak] {
+        display: none !important;
+    }
+</style>
+{% endblock %}

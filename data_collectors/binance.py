@@ -22,16 +22,13 @@ class BinanceCollector:
 
     def __init__(self):
         self.base_url = BINANCE_API_URL
-        self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
+        from core.http_client import SharedHTTPClient
+        return await SharedHTTPClient.get_session()
 
     async def close(self):
-        if self._session and not self._session.closed:
-            await self._session.close()
+        pass # Managed centrally in app.py lifespan
 
     async def get_price(self, symbol: str = "BTCUSDT") -> Dict[str, Any]:
         """

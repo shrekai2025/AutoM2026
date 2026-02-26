@@ -23,22 +23,47 @@ class StockNavCollector:
             return {}
             
         try:
-            # yfinance 存在阻塞 IO，需要放在 executor 中运行
-            import yfinance as yf
+            # 使用 TradingView 接口替代 yfinance，避免频繁的 401 封禁
+            from core.http_client import SharedHTTPClient
+            session = await SharedHTTPClient.get_session()
             
-            def fetch_info():
-                ticker = yf.Ticker(symbol)
-                # handle missing shares info for some small/obscure tickers gracefully
-                shares = ticker.info.get("sharesOutstanding") or ticker.info.get("impliedSharesOutstanding")
-                price = ticker.info.get("currentPrice") or ticker.info.get("previousClose")
-                return price, shares
-
-            price, shares = await asyncio.to_thread(fetch_info)
+            # 常见映射
+            exchange_map = {
+                "MSTR": "NASDAQ:MSTR",
+                "SBET": "NASDAQ:SBET",
+                "BMNR": "AMEX:BMNR",
+                "BITF": "NASDAQ:BITF",
+                "MARA": "NASDAQ:MARA",
+                "COIN": "NASDAQ:COIN"
+            }
+            tv_symbol = exchange_map.get(symbol, f"NASDAQ:{symbol}")
             
-            if not price or not shares:
+            url = "https://scanner.tradingview.com/america/scan"
+            payload = {
+                "symbols": {"tickers": [tv_symbol]},
+                "columns": ["close", "market_cap_basic"]
+            }
+            headers = {"Content-Type": "application/json"}
+            
+            import aiohttp
+            async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                if resp.status != 200:
+                    logger.error(f"TradingView scanner failed for {symbol}: {resp.status}")
+                    return {}
+                
+                data = await resp.json()
+                
+            if not data.get("data") or len(data["data"]) == 0:
+                logger.warning(f"No TV data found for {symbol}")
                 return {}
                 
-            market_cap = price * shares
+            item = data["data"][0]
+            price = item.get("d", [])[0]
+            market_cap = item.get("d", [])[1]
+            
+            if not price or not market_cap:
+                return {}
+                
             # 基础 NAV = 公司持有的 BTC 总价值 (粗略计算)
             btc_nav_value = self.holdings[symbol] * btc_price
             

@@ -13,12 +13,10 @@ class OnchainCollector:
     
     def __init__(self):
         self.mempool_base = "https://mempool.space/api/v1"
-        self._session = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
+        from core.http_client import SharedHTTPClient
+        return await SharedHTTPClient.get_session()
 
     async def get_hashrate(self) -> dict:
         """从 mempool 获取全网算力"""

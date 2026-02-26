@@ -70,20 +70,29 @@ class StablecoinCollector:
 
     async def _fetch_data(self):
         """Fetch all data from DefiLlama and update cache"""
+        import time
+        from core.monitor import monitor
+        start = time.monotonic()
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.BASE_URL) as response:
-                    if response.status != 200:
-                        logger.warning(f"DefiLlama API Error {response.status}")
-                        return
-                    
-                    data = await response.json()
-                    if data and isinstance(data, list):
-                        self._cache_history = data
-                        self._cache_latest = data[-1] if data else None
-                        self._last_update = datetime.now()
+            from core.http_client import SharedHTTPClient
+            session = await SharedHTTPClient.get_session()
+            async with session.get(self.BASE_URL) as response:
+                if response.status != 200:
+                    logger.warning(f"DefiLlama API Error {response.status}")
+                    await monitor.record_status("DefiLlama", "REST", False, 0, f"HTTP {response.status}")
+                    return
+
+                data = await response.json()
+                if data and isinstance(data, list):
+                    self._cache_history = data
+                    self._cache_latest = data[-1] if data else None
+                    self._last_update = datetime.now()
+                    latency = int((time.monotonic() - start) * 1000)
+                    supply = self._cache_latest.get("totalCirculating", {}).get("peggedUSD") if self._cache_latest else None
+                    await monitor.record_status("DefiLlama", "REST", True, latency, f"${supply/1e9:.1f}B" if supply else "OK")
         except Exception as e:
             logger.error(f"Error fetching Stablecoin data: {e}")
+            await monitor.record_status("DefiLlama", "REST", False, 0, str(e)[:80])
 
     def _is_cache_valid(self) -> bool:
         if not self._last_update:

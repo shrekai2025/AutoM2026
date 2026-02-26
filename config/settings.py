@@ -16,7 +16,7 @@ DATABASE_PATH = BASE_DIR / "data" / "autom2026.db"
 DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_PATH}"
 
 # API 配置
-BINANCE_API_URL = "https://api.binance.com"
+BINANCE_API_URL = "https://data-api.binance.vision"
 FRED_API_URL = "https://api.stlouisfed.org/fred"
 FEAR_GREED_API_URL = "https://api.alternative.me/fng"
 

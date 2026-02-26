@@ -16,7 +16,11 @@ engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     future=True,
-    connect_args={"timeout": 15}
+    pool_size=5,              # SQLite single writer limit
+    max_overflow=0,           # No overflow
+    pool_pre_ping=True,       # Detect disconnects early
+    pool_recycle=3600,        # Recycle every hour
+    connect_args={"timeout": 30}  # 30-second timeout
 )
 
 from sqlalchemy import event
@@ -26,6 +30,9 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=5000")   # Wait up to 5s instead of "database locked"
+    cursor.execute("PRAGMA cache_size=-64000")   # 64MB cache
+    cursor.execute("PRAGMA foreign_keys=ON")     # Enforce constraints
     cursor.close()
 
 # 创建会话工厂

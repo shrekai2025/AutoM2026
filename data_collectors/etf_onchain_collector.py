@@ -96,18 +96,14 @@ class ETFOnchainCollector:
     """ETF 链上监控采集器 (全免费方案)"""
 
     def __init__(self):
-        self._session: Optional[aiohttp.ClientSession] = None
         # mempool.space: 免费BTC地址余额API（无需Key），速率限制宽松
         self.mempool_api = "https://mempool.space/api"
         # blockscout: 免费ETH地址余额API（无需Key）
         self.blockscout_api = "https://eth.blockscout.com/api/v2"
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=15)
-            )
-        return self._session
+        from core.http_client import SharedHTTPClient
+        return await SharedHTTPClient.get_session()
 
     # ──────────────────────────────────────────
     #  1. yfinance: ETF AUM (总资产) 查询
@@ -295,40 +291,106 @@ class ETFOnchainCollector:
     #  4. 聚合: 获取所有数据
     # ──────────────────────────────────────────
 
-    async def get_all(self) -> Dict:
+    async def get_all(self, btc_price: float = 0, eth_price: float = 0) -> Dict:
         """
         获取所有 ETF 链上监控数据
-        
-        返回:
-        {
-            "etf_aum": {ticker: {...}},      # yfinance AUM
-            "btc_holdings": [{...}],          # Blockchain.info 余额
-            "eth_holdings": [{...}],          # Etherscan 余额
-            "btc_total": float,               # 已知地址 BTC 汇总
-            "eth_total": float,               # 已知地址 ETH 汇总
-            "timestamp": str,
-        }
+        使用本地的 Arkham 数据库获取量，结合 BTC 价格推算 AUM 规模，完全摆脱对 yfinance 的依赖！
         """
-        logger.info("ETF Onchain Collector: fetching all data...")
+        logger.info("ETF Onchain Collector: fetching all data from DB proxy...")
         
-        # 并发执行 AUM 查询（yfinance），串行执行链上查询（速率限制）
-        aum_task = asyncio.create_task(self.get_all_etf_aum())
+        if btc_price == 0:
+            try:
+                from data_collectors.binance import binance_collector
+                bp = await binance_collector.get_price("BTCUSDT")
+                btc_price = bp["price"] if bp else 0
+            except Exception as e:
+                logger.error(f"Failed to fetch btc price in get_all: {e}")
+                
+        if eth_price == 0:
+            try:
+                from data_collectors.binance import binance_collector
+                ep = await binance_collector.get_price("ETHUSDT")
+                eth_price = ep["price"] if ep else 0
+            except Exception as e:
+                logger.error(f"Failed to fetch eth price in get_all: {e}")
+                
+        from core.database import AsyncSessionLocal
+        from models.crawler import CrawledData
+        from sqlalchemy import select
         
-        # 链上数据串行（避免触发速率限制）
-        btc_holdings = await self.get_all_btc_holdings()
+        btc_holdings_db = {}
+        eth_holdings_db = {}
+        
+        try:
+            async with AsyncSessionLocal() as session:
+                async def get_db_val(dtype: str):
+                    stmt = select(CrawledData).where(CrawledData.data_type == dtype).order_by(CrawledData.date.desc()).limit(1)
+                    result = await session.execute(stmt)
+                    row = result.scalar_one_or_none()
+                    return float(row.value) if row and row.value is not None else None
+
+                btc_holdings_db["IBIT"] = await get_db_val('ibit_holdings_btc')
+                btc_holdings_db["FBTC"] = await get_db_val('fbtc_holdings_btc')
+                btc_holdings_db["ARKB"] = await get_db_val('arkb_holdings_btc')
+                btc_holdings_db["GBTC"] = await get_db_val('gbtc_holdings_btc')
+
+                eth_holdings_db["ETHA"] = await get_db_val('etha_holdings_eth') or await get_db_val('ETHA_onchain_balance')
+                eth_holdings_db["FETH"] = await get_db_val('feth_holdings_eth') or await get_db_val('FETH_onchain_balance')
+        except Exception as e:
+            logger.error(f"Error fetching from DB in etf_onchain_collector: {e}")
+            
         eth_holdings = await self.get_all_eth_holdings()
-        
-        etf_aum = await aum_task
-        
-        # 汇总链上总持仓
-        btc_total = sum(
-            h["btc_balance"] for h in btc_holdings
-            if h["ok"] and h["btc_balance"]
-        )
-        eth_total = sum(
-            h["eth_balance"] for h in eth_holdings
-            if h["ok"] and h["eth_balance"]
-        )
+
+        btc_holdings = []
+        for entry in ETF_BTC_ADDRESSES:
+            balance = btc_holdings_db.get(entry["etf"])
+            btc_holdings.append({
+                "etf": entry["etf"],
+                "name": entry["name"],
+                "address_short": entry["address"][:12] + "...",
+                "btc_balance": balance,
+                "custodian": "Coinbase Custody" if "Coinbase" in entry["custodian"] else "Fidelity Self-Custody",
+                "ok": balance is not None and balance > 0,
+            })
+            
+        for h in eth_holdings:
+            if not h["ok"] or h.get("eth_balance", 0) == 0:
+                db_bal = eth_holdings_db.get(h["etf"], 0)
+                if db_bal is not None and db_bal > 0:
+                    h["eth_balance"] = db_bal
+                    h["ok"] = True
+
+        etf_aum = {}
+        for ticker, meta in ETF_TICKERS.items():
+            aum = None
+            if meta["type"] == "BTC":
+                holding = btc_holdings_db.get(ticker)
+                if not holding:
+                    h_info = next((h for h in btc_holdings if h["etf"] == ticker), None)
+                    if h_info and h_info["ok"]:
+                        holding = h_info.get("btc_balance")
+                        
+                if holding and btc_price:
+                    aum = holding * btc_price
+            elif meta["type"] == "ETH":
+                holding = eth_holdings_db.get(ticker)
+                if not holding:
+                    h_info = next((h for h in eth_holdings if h["etf"] == ticker), None)
+                    if h_info and h_info["ok"]:
+                        holding = h_info.get("eth_balance")
+                        
+                if holding and eth_price:
+                    aum = holding * eth_price
+                    
+            etf_aum[ticker] = {
+                "name": meta["name"],
+                "type": meta["type"],
+                "aum_usd": float(aum) if aum else None,
+                "ok": aum is not None and aum > 0,
+            }
+
+        btc_total = sum(h["btc_balance"] for h in btc_holdings if h["ok"] and h["btc_balance"])
+        eth_total = sum(h["eth_balance"] for h in eth_holdings if h["ok"] and h["eth_balance"])
         
         return {
             "etf_aum": etf_aum,
@@ -345,34 +407,26 @@ class ETFOnchainCollector:
 
     async def get_macro_indicators(self, btc_price: float = 0, eth_price: float = 0) -> List[Dict]:
         """
-        获取格式化后的 macro_indicators 卡片列表，
-        可直接追加到 web/app.py 的 macro_indicators 列表中
-        
-        Args:
-            btc_price: 当前 BTC/USD 价格（用于计算链上持仓市值）
-            eth_price: 当前 ETH/USD 价格
+        获取格式化后的 macro_indicators 卡片列表，即使数据获取失败也展示占位符
         """
         try:
-            data = await self.get_all()
+            data = await self.get_all(btc_price, eth_price)
         except Exception as e:
             logger.error(f"ETF onchain get_all failed: {e}")
-            return []
+            data = {}
 
         cards = []
         etf_aum = data.get("etf_aum", {})
 
-        # ── BTC ETF AUM 卡片（前5大）──
-        # 用 yfinance totalAssets 作为 AUM 数据（最准确的可免费获取数据）
+        # ── BTC ETF AUM 卡片 ──
         btc_etfs = [
             (ticker, info)
             for ticker, info in etf_aum.items()
             if info["type"] == "BTC" and info["ok"] and info["aum_usd"]
         ]
-        # 按 AUM 降序排列
         btc_etfs.sort(key=lambda x: x[1]["aum_usd"] or 0, reverse=True)
 
         if btc_etfs:
-            # 合计 BTC ETF 总 AUM
             total_btc_aum = sum(info["aum_usd"] for _, info in btc_etfs if info["aum_usd"])
             cards.append({
                 "name_zh": "BTC ETF 总规模",
@@ -383,19 +437,38 @@ class ETFOnchainCollector:
                 "class": "text-primary",
                 "desc": f"含 {len(btc_etfs)} 支 BTC ETF 合计总净资产",
             })
+            top_btc = btc_etfs[:3]
+        else:
+            cards.append({
+                "name_zh": "BTC ETF 总规模",
+                "name_en": "Total BTC ETF AUM",
+                "abbr": "BTC-ETF-AUM",
+                "value": "-",
+                "tags": ["资金", "BTC", "ETF"],
+                "class": "",
+                "desc": "等待数据",
+            })
+            top_btc = [("IBIT", ETF_TICKERS["IBIT"]), ("FBTC", ETF_TICKERS["FBTC"]), ("ARKB", ETF_TICKERS["ARKB"])]
 
-            # 前3大 ETF 单独展示
-            for ticker, info in btc_etfs[:3]:
-                aum_b = info["aum_usd"] / 1e9
-                cards.append({
-                    "name_zh": info["name"],
-                    "name_en": f"{ticker} AUM",
-                    "abbr": ticker,
-                    "value": f"${aum_b:.2f}B",
-                    "tags": ["资金", "BTC", "ETF"],
-                    "class": "text-warning" if aum_b > 10 else "",
-                    "desc": f"{ticker} ETF 总净资产 (via yfinance)",
-                })
+        for ticker, info in top_btc:
+            aum_usd = info.get("aum_usd")
+            if aum_usd:
+                aum_b = aum_usd / 1e9
+                val_str = f"${aum_b:.2f}B"
+                color_class = "text-warning" if aum_b > 10 else ""
+            else:
+                val_str = "-"
+                color_class = ""
+            
+            cards.append({
+                "name_zh": info["name"],
+                "name_en": f"{ticker} AUM",
+                "abbr": ticker,
+                "value": val_str,
+                "tags": ["资金", "BTC", "ETF"],
+                "class": color_class,
+                "desc": f"{ticker} ETF 总净资产 (via yfinance)" if aum_usd else "等待数据",
+            })
 
         # ── ETH ETF AUM 卡片 ──
         eth_etfs = [
@@ -403,8 +476,6 @@ class ETFOnchainCollector:
             for ticker, info in etf_aum.items()
             if info["type"] == "ETH" and info["ok"] and info["aum_usd"]
         ]
-        eth_etfs.sort(key=lambda x: x[1]["aum_usd"] or 0, reverse=True)
-
         if eth_etfs:
             total_eth_aum = sum(info["aum_usd"] for _, info in eth_etfs if info["aum_usd"])
             cards.append({
@@ -416,42 +487,80 @@ class ETFOnchainCollector:
                 "class": "text-primary",
                 "desc": f"含 {len(eth_etfs)} 支 ETH ETF 合计总净资产",
             })
+        else:
+            cards.append({
+                "name_zh": "ETH ETF 总规模",
+                "name_en": "Total ETH ETF AUM",
+                "abbr": "ETH-ETF-AUM",
+                "value": "-",
+                "tags": ["资金", "ETH", "ETF"],
+                "class": "",
+                "desc": "等待数据",
+            })
 
         # ── 链上 BTC 余额卡片（按地址） ──
         btc_holdings = data.get("btc_holdings", [])
-        for h in btc_holdings:
-            if not h["ok"] or not h.get("btc_balance"):
-                continue
-            btc_bal = h["btc_balance"]
-            usd_val = btc_bal * btc_price if btc_price else 0
-            cards.append({
-                "name_zh": f"{h['etf']} 链上持仓",
-                "name_en": f"{h['etf']} On-chain Balance",
-                "abbr": f"CHAIN-{h['etf']}",
-                "value": f"{btc_bal:,.0f} BTC",
-                "sub_value": f"≈${usd_val / 1e9:.1f}B" if usd_val else h["custodian"],
-                "tags": ["链上", "BTC", "ETF"],
-                "class": "text-success",
-                "desc": f"托管: {h['custodian']} | {h['address_short']}",
-            })
+        btc_lookup = {h["etf"]: h for h in btc_holdings if h["ok"] and h.get("btc_balance")}
+        
+        for base_h in ETF_BTC_ADDRESSES:
+            etf_symbol = base_h["etf"]
+            h = btc_lookup.get(etf_symbol)
+            if h:
+                btc_bal = h["btc_balance"]
+                usd_val = btc_bal * btc_price if btc_price else 0
+                cards.append({
+                    "name_zh": f"{h['etf']} 链上持仓",
+                    "name_en": f"{h['etf']} On-chain Balance",
+                    "abbr": f"CHAIN-{h['etf']}",
+                    "value": f"{btc_bal:,.0f} BTC",
+                    "sub_value": f"≈${usd_val / 1e9:.1f}B" if usd_val else h["custodian"],
+                    "tags": ["链上", "BTC", "ETF"],
+                    "class": "text-success",
+                    "desc": f"托管: {h['custodian']} | {h['address_short']}",
+                })
+            else:
+                cards.append({
+                    "name_zh": f"{etf_symbol} 链上持仓",
+                    "name_en": f"{etf_symbol} On-chain Balance",
+                    "abbr": f"CHAIN-{etf_symbol}",
+                    "value": "-",
+                    "sub_value": base_h.get("custodian", "等待数据"),
+                    "tags": ["链上", "BTC", "ETF"],
+                    "class": "",
+                    "desc": "等待数据",
+                })
 
         # ── 链上 ETH 余额卡片 ──
         eth_holdings = data.get("eth_holdings", [])
-        for h in eth_holdings:
-            if not h["ok"] or not h.get("eth_balance"):
-                continue
-            eth_bal = h["eth_balance"]
-            usd_val = eth_bal * eth_price if eth_price else 0
-            cards.append({
-                "name_zh": f"{h['etf']} 链上持仓",
-                "name_en": f"{h['etf']} On-chain Balance",
-                "abbr": f"CHAIN-{h['etf']}",
-                "value": f"{eth_bal:,.0f} ETH",
-                "sub_value": f"≈${usd_val / 1e9:.2f}B" if usd_val else h["custodian"],
-                "tags": ["链上", "ETH", "ETF"],
-                "class": "text-success",
-                "desc": f"托管: {h['custodian']} | {h['address_short']}",
-            })
+        eth_lookup = {h["etf"]: h for h in eth_holdings if h["ok"] and h.get("eth_balance")}
+        
+        for base_h in ETF_ETH_ADDRESSES:
+            etf_symbol = base_h["etf"]
+            h = eth_lookup.get(etf_symbol)
+            if h:
+                eth_bal = h["eth_balance"]
+                usd_val = eth_bal * eth_price if eth_price else 0
+                cards.append({
+                    "name_zh": f"{h['etf']} 链上持仓",
+                    "name_en": f"{h['etf']} On-chain Balance",
+                    "abbr": f"CHAIN-{h['etf']}",
+                    "value": f"{eth_bal:,.0f} ETH",
+                    "sub_value": f"≈${usd_val / 1e9:.2f}B" if usd_val else h["custodian"],
+                    "tags": ["链上", "ETH", "ETF"],
+                    "class": "text-success",
+                    "desc": f"托管: {h['custodian']} | {h['address_short']}",
+                })
+            else:
+                cards.append({
+                    "name_zh": f"{etf_symbol} 链上持仓",
+                    "name_en": f"{etf_symbol} On-chain Balance",
+                    "abbr": f"CHAIN-{etf_symbol}",
+                    "value": "-",
+                    "sub_value": base_h.get("custodian", "等待数据"),
+                    "tags": ["链上", "ETH", "ETF"],
+                    "class": "",
+                    "desc": "等待数据",
+                })
 
         return cards
 

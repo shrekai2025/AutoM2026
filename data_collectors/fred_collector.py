@@ -52,59 +52,61 @@ class FREDCollector:
             
         results = {}
         
-        async with aiohttp.ClientSession() as session:
-            # 1. Fetch Standard Indicators
-            tasks = []
-            keys = []
+        from core.http_client import SharedHTTPClient
+        session = await SharedHTTPClient.get_session()
+
+        # 1. Fetch Standard Indicators
+        tasks = []
+        keys = []
+        
+        for key, series_id in self.SERIES_MAPPING.items():
+            if key == "m2_supply": continue # Handle separate
             
-            for key, series_id in self.SERIES_MAPPING.items():
-                if key == "m2_supply": continue # Handle separate
+            # Check cache
+            if self._is_cache_valid(key):
+                results[key] = self._cache[key]
+                continue
                 
-                # Check cache
-                if self._is_cache_valid(key):
-                    results[key] = self._cache[key]
-                    continue
+            tasks.append(self._fetch_series_latest(session, series_id))
+            keys.append(key)
+        
+        if tasks:
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            for key, resp in zip(keys, responses):
+                if isinstance(resp, Exception):
+                    logger.error(f"Error fetching {key}: {resp}")
+                    results[key] = None
+                else:
+                    self._cache[key] = resp
+                    self._cache_expiry[key] = datetime.now() + self._cache_duration
+                    results[key] = resp
+        
+        # 2. Handle M2 Growth (requires historical comparison)
+        if self._is_cache_valid("m2_growth_yoy"):
+            results["m2_growth_yoy"] = self._cache["m2_growth_yoy"]
+        else:
+            try:
+                # Fetch Current M2
+                current_m2 = await self._fetch_series_latest(session, "M2SL")
+                
+                # Fetch 1 Year Ago M2
+                one_year_ago = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+                prev_m2 = await self._fetch_series_observation(session, "M2SL", one_year_ago)
+                
+                if current_m2 and prev_m2 and prev_m2 > 0:
+                    growth = ((current_m2 - prev_m2) / prev_m2) * 100
+                    results["m2_growth_yoy"] = round(growth, 2)
                     
-                tasks.append(self._fetch_series_latest(session, series_id))
-                keys.append(key)
-            
-            if tasks:
-                responses = await asyncio.gather(*tasks, return_exceptions=True)
-                for key, resp in zip(keys, responses):
-                    if isinstance(resp, Exception):
-                        logger.error(f"Error fetching {key}: {resp}")
-                        results[key] = None
-                    else:
-                        self._cache[key] = resp
-                        self._cache_expiry[key] = datetime.now() + self._cache_duration
-                        results[key] = resp
-            
-            # 2. Handle M2 Growth (requires historical comparison)
-            if self._is_cache_valid("m2_growth_yoy"):
-                results["m2_growth_yoy"] = self._cache["m2_growth_yoy"]
-            else:
-                try:
-                    # Fetch Current M2
-                    current_m2 = await self._fetch_series_latest(session, "M2SL")
-                    
-                    # Fetch 1 Year Ago M2
-                    one_year_ago = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-                    prev_m2 = await self._fetch_series_observation(session, "M2SL", one_year_ago)
-                    
-                    if current_m2 and prev_m2 and prev_m2 > 0:
-                        growth = ((current_m2 - prev_m2) / prev_m2) * 100
-                        results["m2_growth_yoy"] = round(growth, 2)
-                        
-                        # Cache the calculated growth
-                        self._cache["m2_growth_yoy"] = results["m2_growth_yoy"]
-                        self._cache_expiry["m2_growth_yoy"] = datetime.now() + self._cache_duration
-                    else:
-                         logger.warning(f"Could not calc M2 growth: curr={current_m2}, prev={prev_m2}")
-                         results["m2_growth_yoy"] = None
-                         
-                except Exception as e:
-                    logger.error(f"Error calculating M2 growth: {e}")
-                    results["m2_growth_yoy"] = None
+                    # Cache the calculated growth
+                    self._cache["m2_growth_yoy"] = results["m2_growth_yoy"]
+                    self._cache_expiry["m2_growth_yoy"] = datetime.now() + self._cache_duration
+                else:
+                     logger.warning(f"Could not calc M2 growth: curr={current_m2}, prev={prev_m2}")
+                     results["m2_growth_yoy"] = None
+                     
+            except Exception as e:
+                logger.error(f"Error calculating M2 growth: {e}")
+                results["m2_growth_yoy"] = None
 
         return results
 
