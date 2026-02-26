@@ -459,6 +459,75 @@ class ETFOnchainCollector:
         if self._session and not self._session.closed:
             await self._session.close()
 
+    async def save_history_to_db(self):
+        """定期调用此方法，将 AUM 和免费链上余额快照写入 crawled_data 表，以支持卡片点击后的历史图表"""
+        try:
+            data = await self.get_all()
+        except Exception as e:
+            logger.error(f"ETF save_history_to_db fetch failed: {e}")
+            return
+            
+        from models.crawler import CrawledData
+        from core.database import AsyncSessionLocal
+        from datetime import datetime
+        
+        now = datetime.utcnow()
+        records = []
+        
+        # 1. 独立 AUM
+        total_btc_aum = 0
+        total_eth_aum = 0
+        
+        for ticker, info in data.get("etf_aum", {}).items():
+            if info["ok"] and info["aum_usd"]:
+                # 保存每支 ETF 的 AUM 历史
+                records.append(CrawledData(
+                    data_type=f"{ticker}_aum",
+                    date=now,
+                    value=info["aum_usd"],
+                    raw_content=str(info)
+                ))
+                if info["type"] == "BTC":
+                    total_btc_aum += info["aum_usd"]
+                elif info["type"] == "ETH":
+                    total_eth_aum += info["aum_usd"]
+                    
+        # 保存汇总 AUM 历史
+        if total_btc_aum > 0:
+            records.append(CrawledData(data_type="total_btc_etf_aum", date=now, value=total_btc_aum, raw_content="{}"))
+        if total_eth_aum > 0:
+            records.append(CrawledData(data_type="total_eth_etf_aum", date=now, value=total_eth_aum, raw_content="{}"))
+            
+        # 2. 独立链上余额
+        for h in data.get("btc_holdings", []):
+            if h["ok"] and h["btc_balance"] is not None:
+                records.append(CrawledData(
+                    data_type=f"{h['etf']}_onchain_balance",
+                    date=now,
+                    value=h["btc_balance"],
+                    raw_content=str(h)
+                ))
+                
+        for h in data.get("eth_holdings", []):
+            if h["ok"] and h["eth_balance"] is not None:
+                records.append(CrawledData(
+                    data_type=f"{h['etf']}_onchain_balance",
+                    date=now,
+                    value=h["eth_balance"],
+                    raw_content=str(h)
+                ))
+                
+        # 写入数据库
+        if records:
+            try:
+                async with AsyncSessionLocal() as db:
+                    for r in records:
+                        db.add(r)
+                    await db.commit()
+                logger.info(f"ETF Onchain Collector: saved {len(records)} history records to DB")
+            except Exception as e:
+                logger.error(f"ETF save_history_to_db commit error: {e}")
+
 
 # 全局实例
 etf_onchain_collector = ETFOnchainCollector()

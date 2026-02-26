@@ -139,5 +139,25 @@ async def check_and_run_crawlers():
         logger.info(f"Triggering background crawl for {name}")
         asyncio.create_task(_run_one_source(source))
 
+    # 专门处理 etf_onchain_collector 的历史快照保存（它是一个独立的异步任务不是爬虫对象）
+    name_onchain = "ETF Onchain Snapshot"
+    if name_onchain not in _running:
+        last_onchain = _last_run.get(name_onchain)
+        if not last_onchain or ((datetime.utcnow() - last_onchain).total_seconds() / 60 >= CRAWL_INTERVAL_MINUTES):
+            _running.add(name_onchain)
+            asyncio.create_task(_run_onchain_snapshot(name_onchain))
+
+async def _run_onchain_snapshot(name: str):
+    """单独执行 etf_onchain_collector 快照任务"""
+    from data_collectors.etf_onchain_collector import etf_onchain_collector
+    try:
+        logger.info(f"Triggering background crawl for {name}")
+        await etf_onchain_collector.save_history_to_db()
+        _last_run[name] = datetime.utcnow()
+    except Exception as e:
+        logger.error(f"Snapshot failed for {name}: {e}")
+    finally:
+        _running.discard(name)
+
 
 __all__ = ["check_and_run_crawlers"]

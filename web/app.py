@@ -643,7 +643,7 @@ async def market_watch(request: Request):
                 "name_en": "BTC ETF Net Flow",
                 "abbr": "BTC-ETF",
                 "value": f"{'+' if val_m >= 0 else ''}${val_m:.1f}M",
-                "tags": ["资金", "BTC"],
+                "tags": ["资金", "BTC", "ETF"],
                 "class": "text-success" if val_m >= 0 else "text-error",
                 "desc": f"最近一日 ({btc_flow.date.strftime('%m-%d')})"
             })
@@ -657,7 +657,7 @@ async def market_watch(request: Request):
                 "name_en": "ETH ETF Net Flow",
                 "abbr": "ETH-ETF",
                 "value": f"{'+' if val_m >= 0 else ''}${val_m:.1f}M",
-                "tags": ["资金", "ETH"],
+                "tags": ["资金", "ETH", "ETF"],
                 "class": "text-success" if val_m >= 0 else "text-error",
                 "desc": f"最近一日 ({eth_flow.date.strftime('%m-%d')})"
             })
@@ -671,7 +671,7 @@ async def market_watch(request: Request):
                 "name_en": "SOL ETF Net Flow",
                 "abbr": "SOL-ETF",
                 "value": f"{'+' if val_m >= 0 else ''}${val_m:.1f}M",
-                "tags": ["资金", "SOL"],
+                "tags": ["资金", "SOL", "ETF"],
                 "class": "text-success" if val_m >= 0 else "text-error",
                 "desc": f"最近一日 ({sol_flow.date.strftime('%m-%d')})"
             })
@@ -996,8 +996,65 @@ async def indicator_detail(request: Request, indicator_id: str, days: int = 90):
             "desc_zh": "BMNR的 mNAV 溢价率",
             "desc_en": "BMNR Premium",
             "unit": "x"
-        }
+        },
+        # Arkham 链上资产指标
+        "IBIT-BTC": {
+            "series_id": None, "data_type": "ibit_holdings_btc", "name_zh": "IBIT 链上BTC", "name_en": "IBIT On-chain BTC",
+            "desc_zh": "贝莱德 IBIT 在 Coinbase Custody 的链上真实比特币余额", "desc_en": "IBIT Bitcoin holdings on-chain", "unit": "BTC"
+        },
+        "IBIT-ETH": {
+            "series_id": None, "data_type": "ibit_holdings_eth", "name_zh": "IBIT 链上ETH", "name_en": "IBIT On-chain ETH",
+            "desc_zh": "贝莱德 ETHA 链上以太坊余额", "desc_en": "IBIT Ethereum holdings on-chain", "unit": "ETH"
+        },
+        "IBIT-USD": {
+            "series_id": None, "data_type": "blackrock_total_usd", "name_zh": "贝莱德总持仓", "name_en": "BlackRock Total Holdings",
+            "desc_zh": "Arkham Intelligence 统计的贝莱德总持仓总净值", "desc_en": "Total Net Value of BlackRock on-chain holdings", "unit": "$"
+        },
+        "FBTC-BTC": {
+            "series_id": None, "data_type": "fbtc_holdings_btc", "name_zh": "FBTC 链上BTC", "name_en": "FBTC On-chain BTC",
+            "desc_zh": "富达 FBTC 的链上比特币实际托管余额", "desc_en": "FBTC Bitcoin holdings on-chain", "unit": "BTC"
+        },
+        "FBTC-ETH": {
+            "series_id": None, "data_type": "fbtc_holdings_eth", "name_zh": "FBTC 链上ETH", "name_en": "FBTC On-chain ETH",
+            "desc_zh": "富达 FETH 的链上以太坊余额", "desc_en": "FBTC Ethereum holdings on-chain", "unit": "ETH"
+        },
+        "FBTC-USD": {
+            "series_id": None, "data_type": "fidelity_total_usd", "name_zh": "富达总持仓", "name_en": "Fidelity Total Holdings",
+            "desc_zh": "Arkham Intelligence 统计的富达实体总净值", "desc_en": "Fidelity Total Network Value on-chain", "unit": "$"
+        },
+        # 兼容 yfinance 和 blockscout/mempool API 的卡片
+        "BTC-ETF-AUM": {
+            "series_id": None, "data_type": "total_btc_etf_aum", "name_zh": "BTC ETF 总规模", "name_en": "Total BTC ETF AUM", "desc_zh": "美国现货比特币 ETF 整体资产规模", "desc_en": "Total BTC ETF AUM", "unit": "$"
+        },
+        "ETH-ETF-AUM": {
+            "series_id": None, "data_type": "total_eth_etf_aum", "name_zh": "ETH ETF 总规模", "name_en": "Total ETH ETF AUM", "desc_zh": "美国现货以太坊 ETF 整体资产规模", "desc_en": "Total ETH ETF AUM", "unit": "$"
+        },
     }
+    
+    # 针对类似 "CHAIN-IBIT" 这种动态生成的 id 做的后备方案
+    if indicator_id.startswith("CHAIN-"):
+        etf_ticker = indicator_id.split("-")[1]
+        INDICATOR_MAP[indicator_id] = {
+            "series_id": None,
+            "data_type": f"{etf_ticker}_onchain_balance",
+            "name_zh": f"{etf_ticker} 链上持仓",
+            "name_en": f"{etf_ticker} On-chain",
+            "desc_zh": f"{etf_ticker} ETF 链上透明地址内的资产余额",
+            "desc_en": f"{etf_ticker} on-chain recorded balance",
+            "unit": ""
+        }
+    elif indicator_id not in INDICATOR_MAP and ("IBIT" in indicator_id or "FBTC" in indicator_id or "GBTC" in indicator_id or "ARKB" in indicator_id or "ETHA" in indicator_id):
+        # 针对 yfinance AUM 动态卡片 (abbr: ticker)
+        INDICATOR_MAP[indicator_id] = {
+            "series_id": None,
+            "data_type": f"{indicator_id}_aum",
+            "name_zh": f"{indicator_id} 资产规模",
+            "name_en": f"{indicator_id} AUM",
+            "desc_zh": f"{indicator_id} 总净资产规模",
+            "desc_en": f"{indicator_id} Net Asset Value",
+            "unit": "$"
+        }
+
     
     indicator_id = indicator_id.upper()
     
