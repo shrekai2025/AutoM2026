@@ -178,3 +178,23 @@ Thumbs.db
 # Claude/Cursor
 .claude/
 .cursor/
+
+# Documentations and Test Scripts Exclusions
+# Keep: README.md
+/docs/
+FRONTEND_DEV_GUIDE.md
+UI_STYLE_GUIDE.md
+项目架构
+README_DEPLOY.md
+UBUNTU_DEPLOY_GUIDE.md
+TENCENT_CLOUD_ACCESS.md
+API_KEYS_GUIDE.md
+
+# Exclude functional tests
+test_*.py
+verify_fred.py
+/tests/
+test_deployment.sh
+scripts/test_*.py
+**/test_*.py
+**/verify_*.py
