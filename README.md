@@ -1,4 +1,4 @@
-# 🚀 AutoM2026 - 简化版加密货币策略交易系统
+# 🚀 AutoM2026 - 加密货币策略交易系统
 
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.95+-009688?logo=fastapi&logoColor=white)
@@ -23,7 +23,7 @@ AutoM2026 是一个面向个人的、轻量级加密货币策略交易系统。�
   - 🛡️ **Risk Control**: 包含最大回撤保护、单笔仓位限制、熔断机制。
   - 📢 **Telegram Bot**: 实时推送交易执行记录和风控告警。
 - **Web UI 管理**: 响应式管理后台，支持策略一键开关、持仓查询与历史账单。
-- **AI 智能辅助**: 支持接入 OpenRouter (GPT-4o/Claude 3.5) 进行市场宏观环境分析。
+- **AI 智能辅助**: 支持接入 OpenRouter 进行市场宏观环境分析。
 
 ---
 
@@ -43,7 +43,7 @@ AutoM2026 是一个面向个人的、轻量级加密货币策略交易系统。�
 
 - **本地**: Python 3.9+
 - **服务器 (推荐)**: Ubuntu 20.04+, Docker & Docker Compose
-- **API Keys (可选但建议)**:
+- **API Keys (可选)**:
   - [FRED API Key](https://fred.stlouisfed.org/docs/api/api_key.html) (宏观数据)
   - [OpenRouter API Key](https://openrouter.ai/) (LLM 智能分析)
 
@@ -105,14 +105,15 @@ location / {
 
 ## 🧠 与 AI Agent / Skill 配合使用
 
-AutoM2026 设计之初就考虑了与 AI 协作。您可以将其作为 AI Agent 的 **Tool (Skill)** 使用：
+AutoM2026 提供了一个完整的 **Trading Hub Skill** (`trading-hub-skill` 目录)，让 AI Agent (如 Openclaw/Claude/Cursor) 能够无缝接入您的交易系统基础设施。
 
-1. **添加到 Claude/Cursor**: 将本项目路径添加到 AI 的上下文或作为本地库。
-2. **API 交互**: AI 可以通过解析 `web/routers` 下的端点，执行以下操作：
-   - `"帮我检查当前的账户持仓情况"` -> 访问 `/api/positions`
-   - `"目前有哪些策略在运行？"` -> 访问 `/api/strategies`
-   - `"分析一下昨天的交易盈利"` -> 获取数据并总结。
-3. **辅助决策**: 开启 `LLM_ENABLED=true` 后，系统会在执行 Macro 策略时，将采集到的宏观数据发送给 LLM 获取分析建议。
+它将系统功能分为了三个渐进式层级：
+1. **L1 市场数据 (Market Data)**: 获取大盘全局快照（含链上估值、FRED 宏观、ETF 资金流向及实时报价）与 K 线数据。
+2. **L2 技术分析 (Technical Analysis)**: 自动化多时间框架 (15m/1h/4h/1d) 技术指标计算与信号提取，Agent 可藉此构建高级交易策略并回传决策。
+3. **L3 策略回测 (Strategy Backtest)**: 双币套利与轮动回测引擎，支持 CEX (Binance) 与 DEX (GeckoTerminal) 深度数据分析。
+
+**接入方式**:
+- 将 `trading-hub-skill/SKILL.md` 等相关规则与工作流文件喂给您的 AI 助手，它将自动理解整个 API 协议，并成为您的全能投资分析顾问。
 
 ---
 
@@ -146,7 +147,6 @@ AutoM2026/
 
 ## 🛡️ 安全提示
 
-- **.env 文件**: 严禁将包含真实 API Key 的 `.env` 提交到 Git。本项目已内置 `.gitignore`。
 - **只读权限**: 建议在 Binance 等平台创建 API Key 时，**仅开启读取权限**，实盘交易需谨慎。
 
 ---
