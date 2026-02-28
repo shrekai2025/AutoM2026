@@ -3,6 +3,7 @@ from .ta_strategy import TAStrategy
 from .macro_strategy import MacroStrategy
 from .grid_strategy import GridStrategy
 from .defi_pair_strategy import DefiPairStrategy
+from .downtrend_follow_strategy import DowntrendFollowStrategy
 
 __all__ = [
     "BaseStrategy",
@@ -12,6 +13,7 @@ __all__ = [
     "MacroStrategy",
     "GridStrategy",
     "DefiPairStrategy",
+    "DowntrendFollowStrategy",
 ]
 
 # 策略类型映射
@@ -20,6 +22,7 @@ STRATEGY_CLASSES = {
     "macro": MacroStrategy,
     "grid": GridStrategy,
     "pair": DefiPairStrategy,
+    "downtrend_follow": DowntrendFollowStrategy,
 }
 
 
